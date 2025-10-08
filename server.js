@@ -1,4 +1,4 @@
-// NEW: server-refactored.js - Clean and modular Shopify Product Manager + ShipStation Customs Editor
+// server.js - OPTIMIZED - Clean and modular Shopify Product Manager + ShipStation Customs Editor
 const express = require('express');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
@@ -38,13 +38,13 @@ app.use(express.static('public'));
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const shipstationRoutes = require('./routes/shipstation');
-const vipCustomersRoutes = require('./routes/vip-customers'); // ADD THIS LINE
+const vipCustomersRoutes = require('./routes/vip-customers');
 
 // Mount routes
 app.use(authRoutes);        // Login, logout routes
 app.use(productRoutes);      // Product manager routes
 app.use(shipstationRoutes);  // ShipStation routes
-app.use(vipCustomersRoutes);
+app.use(vipCustomersRoutes); // VIP customers routes
 
 // ==================== ERROR HANDLING ====================
 
@@ -66,22 +66,25 @@ app.use((err, req, res, next) => {
 
 // ==================== START SERVER ====================
 app.listen(PORT, () => {
-  // Background sync every 30 minutes
-setInterval(async () => {
-  try {
-    console.log('[Background Sync] Updating VIP customer cache...');
-    const { ShopifyAPI } = require('./shopify-api');
-    const { saveVIPCustomers } = require('./utils/vip-cache');
-    
-    const shopify = new ShopifyAPI();
-    const vips = await shopify.getVIPCustomers(1000);
-    await saveVIPCustomers(vips);
-    
-    console.log('[Background Sync] Complete - cached', vips.length, 'VIP customers');
-  } catch (error) {
-    console.error('[Background Sync] Failed:', error.message);
-  }
-}, 30 * 60 * 1000); // 30 minutes
+  // Background sync every 30 minutes (FAST MODE - no order fetching)
+  setInterval(async () => {
+    try {
+      console.log('[Background Sync] Updating VIP customer cache...');
+      const { ShopifyAPI } = require('./shopify-api');
+      const { saveVIPCustomers } = require('./utils/vip-cache');
+      
+      const shopify = new ShopifyAPI();
+      // CRITICAL: Pass false as second parameter to skip order fetching (FAST MODE)
+      // This makes the sync take 5-10 seconds instead of 60+ seconds
+      const vips = await shopify.getVIPCustomers(1000, false);
+      await saveVIPCustomers(vips);
+      
+      console.log('[Background Sync] Complete - cached', vips.length, 'VIP customers');
+    } catch (error) {
+      console.error('[Background Sync] Failed:', error.message);
+    }
+  }, 30 * 60 * 1000); // 30 minutes
+
   console.log(`
   ========================================
   Hemlock & Oak tools (Refactored)

@@ -1,4 +1,4 @@
-// shopify-api.js - Extended version with customer methods
+// shopify-api.js - OPTIMIZED - Extended version with customer methods
 const axios = require('axios');
 const dotenv = require('dotenv');
 
@@ -38,21 +38,50 @@ class ShopifyAPI {
 
   // -------- Customer Methods -------------------------------------------
   
-  // Get all customers with their order statistics
-  async getVIPCustomers(minSpent = 1000) {
-    const customers = await this.getAllCustomers();
+  /**
+   * Get VIP customers (spent > minSpent)
+   * PERFORMANCE NOTE: Setting includeOrders=true is VERY SLOW (60+ seconds for 100 customers)
+   * because it makes individual API calls for each customer's orders.
+   * 
+   * @param {number} minSpent - Minimum lifetime spend threshold (default: 1000)
+   * @param {boolean} includeOrders - Whether to fetch unfulfilled orders (default: false) - SLOW if true!
+   * @returns {Promise<Array>} Array of VIP customer objects
+   */
+  async getVIPCustomers(minSpent = 1000, includeOrders = false) {
+    console.log(`[Shopify API] Fetching VIP customers (min: $${minSpent}, includeOrders: ${includeOrders})`);
+    const startTime = Date.now();
     
-    // Filter customers who spent over the minimum
+    // Step 1: Get all customers (this is relatively fast - 5-10 seconds)
+    const customers = await this.getAllCustomers();
+    console.log(`[Shopify API] Found ${customers.length} total customers in ${Math.round((Date.now() - startTime) / 1000)}s`);
+    
+    // Step 2: Filter for VIPs based on total_spent
     const vipCustomers = customers.filter(c => 
       parseFloat(c.total_spent || 0) >= minSpent
     );
+    console.log(`[Shopify API] Filtered to ${vipCustomers.length} VIP customers`);
     
-    // Sort by total spent (descending)
+    // Step 3: Sort by total spent (descending)
     vipCustomers.sort((a, b) => 
       parseFloat(b.total_spent || 0) - parseFloat(a.total_spent || 0)
     );
     
-    // For each VIP customer, fetch their unfulfilled orders
+    // Step 4: FAST PATH - Return immediately without order data (recommended)
+    if (!includeOrders) {
+      const fastResult = vipCustomers.map(customer => ({
+        ...customer,
+        unfulfilled_orders: [],
+        unfulfilled_count: 0,
+        unfulfilled_value: 0
+      }));
+      console.log(`[Shopify API] Returning ${fastResult.length} VIPs without order data (FAST MODE) in ${Math.round((Date.now() - startTime) / 1000)}s`);
+      return fastResult;
+    }
+    
+    // Step 5: SLOW PATH - Fetch orders for each VIP (only if explicitly requested)
+    console.log(`[Shopify API] WARNING: Fetching unfulfilled orders for ${vipCustomers.length} VIPs (this will be VERY slow - ~60+ seconds)...`);
+    const orderFetchStart = Date.now();
+    
     const vipWithOrders = await Promise.all(
       vipCustomers.map(async (customer) => {
         await this.rateLimit();
@@ -75,6 +104,7 @@ class ShopifyAPI {
             )
           };
         } catch (error) {
+          // Log errors but don't fail the entire operation
           console.error(`Error fetching orders for customer ${customer.id}:`, error.message);
           return {
             ...customer,
@@ -85,6 +115,9 @@ class ShopifyAPI {
         }
       })
     );
+    
+    console.log(`[Shopify API] Order fetching took ${Math.round((Date.now() - orderFetchStart) / 1000)}s`);
+    console.log(`[Shopify API] Total time: ${Math.round((Date.now() - startTime) / 1000)}s`);
     
     return vipWithOrders;
   }

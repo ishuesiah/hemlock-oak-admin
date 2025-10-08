@@ -1,9 +1,10 @@
-// routes/vip-customers.js - Updated to use SQLite caching
+// routes/vip-customers.js - Updated to include ShipStation tagging
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { ShopifyAPI } = require('../shopify-api.js');
+const { ShipStationAPI } = require('../shipstation-api.js'); // ADD THIS
 const { requireAuth, requireAuthApi } = require('../utils/auth-middleware');
 const { initDB } = require('../utils/database');
 const { getVIPCustomersFast, saveVIPCustomers, getSyncStatus } = require('../utils/vip-cache');
@@ -11,8 +12,9 @@ const { getVIPCustomersFast, saveVIPCustomers, getSyncStatus } = require('../uti
 // Initialize database on startup
 initDB().catch(console.error);
 
-// Initialize Shopify API
+// Initialize APIs
 const shopify = new ShopifyAPI();
+const shipstation = new ShipStationAPI(); // ADD THIS
 
 // Load HTML template
 const vipCustomersHTML = fs.readFileSync(path.join(__dirname, '../views/vip-customers.html'), 'utf8');
@@ -150,6 +152,124 @@ router.get('/api/vip-customers', requireAuthApi, async (req, res) => {
     });
   }
 });
+
+// ===== NEW: ShipStation VIP Tagging Endpoints =====
+
+/**
+ * API: Sync VIP customers to ShipStation with 2026VIP tag
+ * This endpoint tags all orders for VIP customers (>$1000 spent) in ShipStation
+ */
+router.post('/api/vip-customers/sync-to-shipstation', requireAuthApi, async (req, res) => {
+  try {
+    const minSpent = Number(req.body.minSpent || 1000);
+    const tag = req.body.tag || '2026VIP';
+    const onlyAwaitingShipment = req.body.onlyAwaitingShipment === true;
+    
+    console.log(`[ShipStation Sync] Starting VIP tag sync...`);
+    console.log(`  Tag: ${tag}`);
+    console.log(`  Min Spent: $${minSpent}`);
+    console.log(`  Only Awaiting Shipment: ${onlyAwaitingShipment}`);
+    
+    // Get VIP customers from cache or Shopify
+    let vipCustomers = await getVIPCustomersFast(minSpent);
+    if (!vipCustomers) {
+      console.log(`[ShipStation Sync] No cache, fetching from Shopify...`);
+      vipCustomers = await shopify.getVIPCustomers(minSpent);
+    }
+    
+    console.log(`[ShipStation Sync] Found ${vipCustomers.length} VIP customers to tag`);
+    
+    // Extract email addresses (filter out customers without email)
+    const customerEmails = vipCustomers
+      .filter(c => c.email && c.email.trim() !== '')
+      .map(c => c.email.trim());
+    
+    console.log(`[ShipStation Sync] ${customerEmails.length} customers have valid emails`);
+    
+    if (customerEmails.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No customers with valid emails to tag',
+        results: {
+          totalCustomers: 0,
+          totalOrdersUpdated: 0
+        }
+      });
+    }
+    
+    // Batch tag all VIP customers in ShipStation
+    const results = await shipstation.batchTagCustomers(
+      customerEmails, 
+      tag, 
+      { onlyAwaitingShipment, skipCancelled: true }
+    );
+    
+    console.log(`[ShipStation Sync] Complete!`);
+    console.log(`  Orders Updated: ${results.totalOrdersUpdated}`);
+    console.log(`  Orders Skipped: ${results.totalOrdersSkipped}`);
+    console.log(`  Errors: ${results.errors.length}`);
+    
+    res.json({
+      success: true,
+      message: `Successfully tagged ${results.totalOrdersUpdated} orders for ${results.successfulCustomers} VIP customers`,
+      results: {
+        totalCustomers: results.totalCustomers,
+        successfulCustomers: results.successfulCustomers,
+        failedCustomers: results.failedCustomers,
+        totalOrdersFound: results.totalOrdersFound,
+        totalOrdersUpdated: results.totalOrdersUpdated,
+        totalOrdersSkipped: results.totalOrdersSkipped,
+        errors: results.errors.slice(0, 10) // Only send first 10 errors to avoid huge response
+      }
+    });
+    
+  } catch (error) {
+    console.error('[ShipStation Sync] Failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+/**
+ * API: Tag a single customer in ShipStation
+ */
+router.post('/api/vip-customers/tag-single', requireAuthApi, async (req, res) => {
+  try {
+    const { email, tag = '2026VIP', onlyAwaitingShipment = false } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email is required' 
+      });
+    }
+    
+    console.log(`[ShipStation Sync] Tagging single customer: ${email}`);
+    
+    const result = await shipstation.addCustomerTag(
+      email, 
+      tag, 
+      { onlyAwaitingShipment, skipCancelled: true }
+    );
+    
+    res.json({
+      success: true,
+      message: `Tagged ${result.ordersUpdated} orders for ${email}`,
+      result
+    });
+    
+  } catch (error) {
+    console.error('[ShipStation Sync] Failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+// ===== END NEW ENDPOINTS =====
 
 // Helper to get cache age
 async function getCacheAge() {

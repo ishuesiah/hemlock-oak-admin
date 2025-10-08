@@ -160,6 +160,9 @@
           <div class="cache-indicator" id="cacheIndicator">
             <span id="cacheText">Cached data</span>
           </div>
+          <button id="syncToShipStationBtn" class="btn btn-primary">
+            <i class="icon-shipstation"></i> Sync VIP Tags to ShipStation
+          </button>
           <button class="btn btn-secondary" onclick="exportToCSV()">📥 Export CSV</button>
           <button class="btn btn-primary" id="refreshBtn" onclick="refreshData(true)">🔄 Refresh</button>
         </div>
@@ -526,6 +529,45 @@
       statusMessage.textContent = 'Exporting VIP customers to CSV...';
       setTimeout(() => { statusBar.className = 'status-bar'; }, 3000);
     }
+  </script>
+  <!-- Add this JavaScript at the bottom of your HTML file -->
+<script>
+  // Sync VIP customers to ShipStation with 2026VIP tag
+  document.getElementById('syncToShipStationBtn').addEventListener('click', async () => {
+    if (!confirm('This will tag all VIP customer orders in ShipStation with "2026VIP". Continue?')) {
+      return;
+    }
+    
+    const btn = document.getElementById('syncToShipStationBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="spinner"></i> Syncing...';
+    
+    try {
+      const response = await fetch('/api/vip-customers/sync-to-shipstation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          minSpent: 1000,
+          tag: '2026VIP',
+          onlyAwaitingShipment: false // Set to true if you only want to tag unshipped orders
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        alert(`Success! Tagged ${data.results.totalOrdersUpdated} orders for ${data.results.successfulCustomers} VIP customers`);
+        console.log('Sync results:', data.results);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="icon-shipstation"></i> Sync VIP Tags to ShipStation';
+    }
+  });
   </script>
 </body>
 </html>
