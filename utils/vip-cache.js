@@ -9,8 +9,9 @@ async function getVIPCustomersFast(minSpent = 1000) {
     'SELECT * FROM sync_log WHERE sync_type = "customers" ORDER BY synced_at DESC LIMIT 1'
   );
   
-  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  const needsSync = !lastSync || lastSync.synced_at < twoHoursAgo;
+  const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+  const lastSyncTime = new Date(lastSync.synced_at).getTime();
+  const needsSync = !lastSync || lastSyncTime < twoHoursAgo;
   
   if (needsSync) {
     console.log('[DB] Data is stale or missing');

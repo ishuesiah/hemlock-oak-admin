@@ -33,6 +33,16 @@ class ShipStationAPI {
     }
   }
 
+  /**
+   * Get tag ID by tag name
+   */
+  async getTagId(tagName) {
+    const { data } = await this.client.get('/accounts/listtags');
+    const tags = data?.tags || data || [];
+    const tag = tags.find(t => t.name === tagName);
+    return tag ? tag.tagId : null;
+  }
+
   // ===== Orders =====
   async getOrder(orderId) {
     return this.retryWithBackoff(async () => {
@@ -78,35 +88,51 @@ class ShipStationAPI {
    */
   async getOrdersByCustomerEmail(customerEmail, additionalParams = {}) {
     return this.retryWithBackoff(async () => {
-      // ShipStation uses 'customerEmail' parameter for order search
       const params = {
         customerEmail: customerEmail.trim(),
-        pageSize: 500, // Get up to 500 orders per request
+        pageSize: 100,
+        page: 1,
         ...additionalParams
       };
       
+      // Use orderStatusFilter if provided
+      if (additionalParams.orderStatusFilter) {
+        params.orderStatus = additionalParams.orderStatusFilter;
+        delete params.orderStatusFilter;
+      }
+      
       const orders = await this.searchOrders(params);
-      console.log(`  Found ${orders.length} orders for ${customerEmail}`);
-      return orders;
+      
+      // Filter to only matching emails (ShipStation's email search doesn't work well)
+      const matchingOrders = orders.filter(o => 
+        o.customerEmail?.toLowerCase() === customerEmail.toLowerCase()
+      );
+      
+      console.log(`  Found ${matchingOrders.length} matching orders for ${customerEmail}`);
+      
+      return matchingOrders;
     });
   }
 
   /**
    * Add a tag to a customer by updating all their orders
    * @param {string} customerEmail - Customer's email
-   * @param {string} tag - Tag to add (e.g., "2026VIP")
+   * @param {number} tagId - Tag ID to add (numeric ID from ShipStation)
    * @param {object} options - Options for filtering orders
    * @returns {Promise<object>} Summary of updates
    */
-  async addCustomerTag(customerEmail, tag, options = {}) {
+  async addCustomerTag(customerEmail, tagId, options = {}) {
     const {
-      onlyAwaitingShipment = false, // Only tag orders that haven't shipped
-      skipCancelled = true           // Skip cancelled orders
+      onlyAwaitingShipment = false,
+      skipCancelled = true,
+      orderStatusFilter = undefined
     } = options;
 
     try {
       // Get all orders for this customer
-      const orders = await this.getOrdersByCustomerEmail(customerEmail);
+      const orders = await this.getOrdersByCustomerEmail(customerEmail, {
+        orderStatusFilter
+      });
       
       if (orders.length === 0) {
         return {
@@ -136,23 +162,23 @@ class ShipStationAPI {
             continue;
           }
 
-          // Check if tag already exists
-          const existingTags = order.customerTags || [];
-          if (existingTags.includes(tag)) {
+          // Check if tag already exists (tagIds is array of numbers)
+          const existingTagIds = order.tagIds || [];
+          if (existingTagIds.includes(tagId)) {
             skipped++;
-            continue; // Tag already present, skip
+            continue;
           }
 
-          // Add the new tag to existing tags
-          const newTags = [...existingTags, tag];
-
-          // Update the order with the new tag
-          await this.updateOrderTags(order.orderId, newTags);
+          // Add ONLY the new tag using the addtag endpoint
+          await this.addTagToOrder(order.orderId, tagId);
           updated++;
 
-          // Rate limiting: ShipStation allows ~40 requests/minute
-          // Add a small delay to be safe
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Rate limiting
+          if (updated % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
 
         } catch (orderError) {
           errors.push({
@@ -177,31 +203,56 @@ class ShipStationAPI {
   }
 
   /**
-   * Update customer tags on a specific order
+   * Add a single tag to an order using ShipStation's addtag endpoint
    * @param {number} orderId - ShipStation order ID
-   * @param {Array<string>} tags - Array of tags to set
-   * @returns {Promise<object>} Updated order
+   * @param {number} tagId - Tag ID to add
+   * @returns {Promise<object>} Response from API
    */
-  async updateOrderTags(orderId, tags) {
+  async addTagToOrder(orderId, tagId) {
     return this.retryWithBackoff(async () => {
-      const updatePayload = {
+      const payload = {
         orderId: orderId,
-        customerTags: tags // This is the field ShipStation uses for customer tags
+        tagId: tagId
       };
-
-      const { data } = await this.client.post('/orders/createorder', updatePayload);
+      
+      console.log(`  Adding tag ${tagId} to order ${orderId}`);
+      
+      const { data } = await this.client.post('/orders/addtag', payload);
+      
+      console.log(`  ✅ Tag added successfully`);
+      
       return data;
     });
   }
 
   /**
+   * Update order tags (deprecated - use addTagToOrder instead)
+   * Keeping for backwards compatibility
+   */
+  async updateOrderTags(orderId, tagIds) {
+    // Add each tag individually
+    for (const tagId of tagIds) {
+      await this.addTagToOrder(orderId, tagId);
+    }
+    return { success: true };
+  }
+
+  /**
    * Batch tag multiple customers with the same tag
    * @param {Array<string>} customerEmails - Array of customer emails
-   * @param {string} tag - Tag to apply
+   * @param {string} tag - Tag name to apply
    * @param {object} options - Tagging options
    * @returns {Promise<object>} Summary of all updates
    */
   async batchTagCustomers(customerEmails, tag, options = {}) {
+    // Get tag ID from tag name first
+    const tagId = await this.getTagId(tag);
+    if (!tagId) {
+      throw new Error(`Tag "${tag}" not found in ShipStation. Please create it first.`);
+    }
+
+    console.log(`Using tag ID ${tagId} for tag "${tag}"`);
+
     const results = {
       totalCustomers: customerEmails.length,
       totalOrdersFound: 0,
@@ -216,7 +267,8 @@ class ShipStationAPI {
     for (const email of customerEmails) {
       try {
         console.log(`Tagging customer: ${email}`);
-        const result = await this.addCustomerTag(email, tag, options);
+        // Pass tagId (number) instead of tag (string)
+        const result = await this.addCustomerTag(email, tagId, options);
         
         results.totalOrdersFound += result.ordersFound;
         results.totalOrdersUpdated += result.ordersUpdated;

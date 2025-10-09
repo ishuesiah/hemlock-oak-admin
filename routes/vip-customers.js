@@ -4,7 +4,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { ShopifyAPI } = require('../shopify-api.js');
-const { ShipStationAPI } = require('../shipstation-api.js'); // ADD THIS
+const { ShipStationAPI } = require('../shipstation-api.js');
 const { requireAuth, requireAuthApi } = require('../utils/auth-middleware');
 const { initDB } = require('../utils/database');
 const { getVIPCustomersFast, saveVIPCustomers, getSyncStatus } = require('../utils/vip-cache');
@@ -14,7 +14,7 @@ initDB().catch(console.error);
 
 // Initialize APIs
 const shopify = new ShopifyAPI();
-const shipstation = new ShipStationAPI(); // ADD THIS
+const shipstation = new ShipStationAPI();
 
 // Load HTML template
 const vipCustomersHTML = fs.readFileSync(path.join(__dirname, '../views/vip-customers.html'), 'utf8');
@@ -49,11 +49,11 @@ router.get('/api/vip-customers', requireAuthApi, async (req, res) => {
     // If not in cache or force refresh, fetch from Shopify
     if (!vipCustomers) {
       console.log(`[VIP Customers] Fetching fresh data from Shopify API...`);
-      vipCustomers = await shopify.getVIPCustomers(minSpent);
+      vipCustomers = await shopify.getVIPCustomers(minSpent, false);
       
       // Save to SQLite cache for next time
       try {
-        await saveVIPCustomers(vipCustomers);
+        await saveVIPCustomers(vipCustomers, minSpent);
         console.log(`[VIP Customers] Saved ${vipCustomers.length} customers to SQLite cache`);
       } catch (saveError) {
         console.error('[VIP Customers] Failed to save to cache:', saveError);
@@ -174,18 +174,18 @@ router.post('/api/vip-customers/sync-to-shipstation', requireAuthApi, async (req
     let vipCustomers = await getVIPCustomersFast(minSpent);
     if (!vipCustomers) {
       console.log(`[ShipStation Sync] No cache, fetching from Shopify...`);
-      vipCustomers = await shopify.getVIPCustomers(minSpent);
+      vipCustomers = await shopify.getVIPCustomers(minSpent, false);
     }
-    
+
     console.log(`[ShipStation Sync] Found ${vipCustomers.length} VIP customers to tag`);
-    
+
     // Extract email addresses (filter out customers without email)
     const customerEmails = vipCustomers
       .filter(c => c.email && c.email.trim() !== '')
       .map(c => c.email.trim());
-    
+
     console.log(`[ShipStation Sync] ${customerEmails.length} customers have valid emails`);
-    
+
     if (customerEmails.length === 0) {
       return res.json({
         success: true,
@@ -196,12 +196,17 @@ router.post('/api/vip-customers/sync-to-shipstation', requireAuthApi, async (req
         }
       });
     }
-    
+
     // Batch tag all VIP customers in ShipStation
+    // Pass orderStatus filter to optimize API calls
     const results = await shipstation.batchTagCustomers(
       customerEmails, 
       tag, 
-      { onlyAwaitingShipment, skipCancelled: true }
+      { 
+        onlyAwaitingShipment, 
+        skipCancelled: true,
+        orderStatusFilter: onlyAwaitingShipment ? 'awaiting_shipment' : undefined
+      }
     );
     
     console.log(`[ShipStation Sync] Complete!`);
@@ -219,7 +224,7 @@ router.post('/api/vip-customers/sync-to-shipstation', requireAuthApi, async (req
         totalOrdersFound: results.totalOrdersFound,
         totalOrdersUpdated: results.totalOrdersUpdated,
         totalOrdersSkipped: results.totalOrdersSkipped,
-        errors: results.errors.slice(0, 10) // Only send first 10 errors to avoid huge response
+        errors: results.errors.slice(0, 10)
       }
     });
     
@@ -305,8 +310,9 @@ router.post('/api/vip-customers/clear-cache', requireAuthApi, async (req, res) =
   try {
     // Fetch fresh data and save to cache
     console.log('[VIP Customers] Manual cache refresh requested');
-    const vipCustomers = await shopify.getVIPCustomers(1000);
-    await saveVIPCustomers(vipCustomers);
+    const minSpent = 1000;
+    const vipCustomers = await shopify.getVIPCustomers(minSpent, false);
+    await saveVIPCustomers(vipCustomers, minSpent); 
     
     res.json({ 
       success: true, 
@@ -327,7 +333,7 @@ router.get('/api/vip-customers/export', requireAuthApi, async (req, res) => {
     
     if (!vipCustomers) {
       console.log(`[VIP Export] No cache, fetching fresh data`);
-      vipCustomers = await shopify.getVIPCustomers(minSpent);
+      vipCustomers = await shopify.getVIPCustomers(minSpent, false);
     }
     
     // Create CSV headers
