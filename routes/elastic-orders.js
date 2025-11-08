@@ -16,7 +16,7 @@ router.get('/elastic-orders', requireAuth, (_req, res) => res.send(elasticOrders
 
 /**
  * Helper function to check if an order contains elastic items
- * Searches both line item SKUs and item names/descriptions
+ * Searches line item SKUs, names, and stringifiedProperties
  */
 function containsElastic(order) {
   if (!order || !Array.isArray(order.items)) return false;
@@ -26,10 +26,11 @@ function containsElastic(order) {
   for (const item of order.items) {
     const sku = String(item.sku || '').toLowerCase();
     const name = String(item.name || '').toLowerCase();
+    const stringifiedProps = String(item.stringifiedProperties || '').toLowerCase();
 
-    // Check if any elastic keyword appears in SKU or name
+    // Check if any elastic keyword appears in SKU, name, or stringifiedProperties
     for (const keyword of elasticKeywords) {
-      if (sku.includes(keyword) || name.includes(keyword)) {
+      if (sku.includes(keyword) || name.includes(keyword) || stringifiedProps.includes(keyword)) {
         return true;
       }
     }
@@ -98,8 +99,9 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
             const elasticItems = order.items.filter(item => {
               const sku = String(item.sku || '').toLowerCase();
               const name = String(item.name || '').toLowerCase();
+              const stringifiedProps = String(item.stringifiedProperties || '').toLowerCase();
               return ['elastic', 'clip band', 'clipband'].some(keyword =>
-                sku.includes(keyword) || name.includes(keyword)
+                sku.includes(keyword) || name.includes(keyword) || stringifiedProps.includes(keyword)
               );
             });
 
@@ -115,7 +117,8 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
               elasticItems: elasticItems.map(item => ({
                 sku: item.sku,
                 name: item.name,
-                quantity: item.quantity
+                quantity: item.quantity,
+                stringifiedProperties: item.stringifiedProperties || ''
               })),
               shipStationUrl: `https://ship.shipstation.com/orders/details/${order.orderId}`
             });
