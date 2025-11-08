@@ -146,7 +146,7 @@ class ShipStationAPI {
       });
 
       const orders = data?.orders || [];
-      console.log(`[ShipStation] Fetched ${orders.length} unfulfilled orders`);
+      console.log(`[ShipStation] Fetched ${orders.length} unfulfilled orders from page ${page}`);
 
       // Return simplified order data
       return orders.map(order => ({
@@ -165,6 +165,41 @@ class ShipStationAPI {
       }));
     } catch (error) {
       console.error('[ShipStation] Error fetching unfulfilled orders:', error.message);
+      throw error;
+    }
+  }
+
+  async getAllUnfulfilledOrders() {
+    try {
+      console.log('[ShipStation] Fetching ALL unfulfilled orders (all pages)...');
+
+      let allOrders = [];
+      let page = 1;
+      let hasMore = true;
+      const pageSize = 500; // ShipStation max
+
+      while (hasMore) {
+        const orders = await this.getUnfulfilledOrders(page, pageSize);
+
+        if (orders.length > 0) {
+          allOrders = allOrders.concat(orders);
+          console.log(`[ShipStation] Total so far: ${allOrders.length} orders`);
+        }
+
+        // If we got less than pageSize, we're done
+        hasMore = orders.length === pageSize;
+
+        if (hasMore) {
+          page++;
+          // Rate limiting - wait 1 second between pages
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      console.log(`[ShipStation] ✅ Fetched ${allOrders.length} total unfulfilled orders across ${page} page(s)`);
+      return allOrders;
+    } catch (error) {
+      console.error('[ShipStation] Error fetching all unfulfilled orders:', error.message);
       throw error;
     }
   }

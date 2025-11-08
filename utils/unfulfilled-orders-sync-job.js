@@ -23,8 +23,8 @@ async function syncUnfulfilledOrders() {
       console.log('[Orders Sync] CUSMA database not loaded, continuing without it');
     });
 
-    // Fetch all unfulfilled orders (ShipStation max is 500 per page)
-    const orders = await api.getUnfulfilledOrders(1, 500);
+    // Fetch ALL unfulfilled orders (handles pagination automatically)
+    const orders = await api.getAllUnfulfilledOrders();
 
     // Save to cache
     await saveUnfulfilledOrders(orders);

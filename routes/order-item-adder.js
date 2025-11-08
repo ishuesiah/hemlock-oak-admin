@@ -175,4 +175,29 @@ router.post('/api/shipstation/unfulfilled-orders/refresh', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/shipstation/order/:orderNumber - Get full order details
+ */
+router.get('/api/shipstation/order/:orderNumber', async (req, res) => {
+  try {
+    const { orderNumber } = req.params;
+
+    if (!shipstationAPI) {
+      shipstationAPI = new ShipStationAPI();
+      await shipstationAPI.loadCUSMA('./data/CUSMA.csv');
+    }
+
+    const order = await shipstationAPI.getOrderByNumber(orderNumber);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    res.json({ order });
+  } catch (error) {
+    console.error('[API] Error fetching order details:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

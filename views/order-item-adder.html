@@ -110,6 +110,48 @@
     /* Empty state */
     .empty-state { text-align: center; padding: 3rem; color: #999; }
     .empty-state h3 { color: #666; margin-bottom: .5rem; }
+
+    /* Order detail drawer */
+    .order-drawer { position: fixed; top: 0; right: -600px; width: 600px; height: 100vh; background: #fff; box-shadow: -4px 0 12px rgba(0,0,0,.15); z-index: 1000; transition: right .3s; overflow-y: auto; }
+    .order-drawer.open { right: 0; }
+    .order-drawer-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.4); z-index: 999; display: none; }
+    .order-drawer-overlay.show { display: block; }
+
+    .drawer-header { background: #f8f9fa; padding: 1.5rem; border-bottom: 2px solid #e0e0e0; position: sticky; top: 0; z-index: 10; }
+    .drawer-header h2 { font-size: 1.2rem; margin-bottom: .5rem; color: #333; }
+    .drawer-header .order-status { display: inline-block; padding: .25rem .75rem; border-radius: 4px; background: #fef3c7; color: #d97706; font-size: .8rem; font-weight: 600; text-transform: uppercase; }
+    .drawer-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666; padding: .5rem; }
+    .drawer-close:hover { color: #333; }
+
+    .drawer-content { padding: 1.5rem; }
+    .drawer-section { margin-bottom: 2rem; }
+    .drawer-section h3 { font-size: 1rem; color: #333; margin-bottom: 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: .5rem; }
+
+    .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 1rem; }
+    .info-item { }
+    .info-label { font-size: .75rem; color: #666; text-transform: uppercase; letter-spacing: .5px; margin-bottom: .25rem; }
+    .info-value { font-size: .9rem; color: #333; font-weight: 500; }
+
+    .line-items-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    .line-items-table th { text-align: left; padding: .75rem; background: #f8f9fa; font-size: .8rem; font-weight: 600; color: #666; border-bottom: 2px solid #e0e0e0; }
+    .line-items-table td { padding: .75rem; border-bottom: 1px solid #f0f0f0; font-size: .85rem; }
+    .line-items-table .item-name { font-weight: 500; color: #333; }
+    .line-items-table .item-sku { color: #666; font-size: .8rem; }
+    .line-items-table .item-options { font-size: .75rem; color: #999; margin-top: .25rem; padding-left: 1rem; }
+    .line-items-table .item-option { display: block; }
+
+    .address-box { background: #f8f9fa; padding: 1rem; border-radius: 6px; border: 1px solid #e0e0e0; }
+    .address-box .name { font-weight: 600; margin-bottom: .5rem; }
+    .address-box .line { font-size: .85rem; color: #666; margin-bottom: .25rem; }
+
+    .cost-summary { background: #f8f9fa; padding: 1rem; border-radius: 6px; border: 1px solid #e0e0e0; }
+    .cost-row { display: flex; justify-content: space-between; padding: .5rem 0; font-size: .9rem; }
+    .cost-row.total { border-top: 2px solid #e0e0e0; margin-top: .5rem; padding-top: .75rem; font-weight: 600; font-size: 1rem; }
+
+    .shipping-info { background: #e0f2fe; padding: 1rem; border-radius: 6px; border: 1px solid #7dd3fc; }
+    .shipping-info .service { font-weight: 600; color: #0369a1; margin-bottom: .5rem; }
+    .shipping-info .carrier { font-size: .85rem; color: #666; }
+    .shipping-info .cost { font-size: 1.1rem; font-weight: 600; color: #0369a1; margin-top: .5rem; }
   </style>
 </head>
 <body>
@@ -243,6 +285,22 @@
     </div>
   </div>
 
+  <!-- Order Detail Drawer -->
+  <div class="order-drawer-overlay" id="orderDrawerOverlay" onclick="closeOrderDrawer()"></div>
+  <div class="order-drawer" id="orderDrawer">
+    <div class="drawer-header">
+      <button class="drawer-close" onclick="closeOrderDrawer()">×</button>
+      <h2 id="drawerOrderNumber">Loading...</h2>
+      <span class="order-status" id="drawerOrderStatus">-</span>
+    </div>
+    <div class="drawer-content" id="drawerContent">
+      <div class="loading show">
+        <div class="spinner"></div>
+        <p>Loading order details...</p>
+      </div>
+    </div>
+  </div>
+
   <script>
     let allOrders = [];
     let filteredOrders = [];
@@ -357,7 +415,7 @@
         const row = document.createElement('tr');
         row.innerHTML = `
           <td><input type="checkbox" class="order-checkbox" value="${order.orderNumber}" onchange="updateSelectedCount()"></td>
-          <td><strong>${order.orderNumber}</strong></td>
+          <td><a href="javascript:void(0)" onclick="openOrderDrawer('${order.orderNumber}')" style="color:#667eea;text-decoration:none;font-weight:600"><strong>${order.orderNumber}</strong></a></td>
           <td>${order.customerName}</td>
           <td>${order.customerEmail || '-'}</td>
           <td>${new Date(order.orderDate).toLocaleDateString()}</td>
@@ -540,6 +598,173 @@
       // Scroll to results
       document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
     }
+
+    // Order detail drawer functions
+    async function openOrderDrawer(orderNumber) {
+      const drawer = document.getElementById('orderDrawer');
+      const overlay = document.getElementById('orderDrawerOverlay');
+      const content = document.getElementById('drawerContent');
+
+      // Show drawer and overlay
+      drawer.classList.add('open');
+      overlay.classList.add('show');
+
+      // Set order number in header
+      document.getElementById('drawerOrderNumber').textContent = `Order ${orderNumber}`;
+
+      // Show loading
+      content.innerHTML = '<div class="loading show"><div class="spinner"></div><p>Loading order details...</p></div>';
+
+      try {
+        const response = await fetch(`/api/shipstation/order/${orderNumber}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to load order');
+        }
+
+        const order = data.order;
+
+        // Update status
+        document.getElementById('drawerOrderStatus').textContent = order.orderStatus.replace(/_/g, ' ');
+
+        // Build order details HTML
+        let html = '';
+
+        // Order Information
+        html += '<div class="drawer-section">';
+        html += '<h3>Order Information</h3>';
+        html += '<div class="info-grid">';
+        html += `<div class="info-item"><div class="info-label">Order Date</div><div class="info-value">${new Date(order.orderDate).toLocaleString()}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Order Status</div><div class="info-value">${order.orderStatus}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Payment Method</div><div class="info-value">${order.paymentMethod || '-'}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Customer Email</div><div class="info-value">${order.customerEmail || '-'}</div></div>`;
+        html += '</div>';
+        html += '</div>';
+
+        // Shipping Information
+        if (order.carrierCode || order.serviceCode) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Shipping Service</h3>';
+          html += '<div class="shipping-info">';
+          html += `<div class="service">${order.serviceCode || 'Standard Service'}</div>`;
+          html += `<div class="carrier">Carrier: ${order.carrierCode || 'Not selected'}</div>`;
+          html += `<div class="cost">Shipping: $${(order.shippingAmount || 0).toFixed(2)}</div>`;
+          html += '</div>';
+          html += '</div>';
+        }
+
+        // Ship To Address
+        if (order.shipTo) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Ship To</h3>';
+          html += '<div class="address-box">';
+          html += `<div class="name">${order.shipTo.name || 'Unknown'}</div>`;
+          if (order.shipTo.company) html += `<div class="line">${order.shipTo.company}</div>`;
+          if (order.shipTo.street1) html += `<div class="line">${order.shipTo.street1}</div>`;
+          if (order.shipTo.street2) html += `<div class="line">${order.shipTo.street2}</div>`;
+          html += `<div class="line">${order.shipTo.city || ''}, ${order.shipTo.state || ''} ${order.shipTo.postalCode || ''}</div>`;
+          html += `<div class="line">${order.shipTo.country || ''}</div>`;
+          if (order.shipTo.phone) html += `<div class="line">Phone: ${order.shipTo.phone}</div>`;
+          html += '</div>';
+          html += '</div>';
+        }
+
+        // Bill To Address
+        if (order.billTo) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Bill To</h3>';
+          html += '<div class="address-box">';
+          html += `<div class="name">${order.billTo.name || 'Unknown'}</div>`;
+          if (order.billTo.company) html += `<div class="line">${order.billTo.company}</div>`;
+          if (order.billTo.street1) html += `<div class="line">${order.billTo.street1}</div>`;
+          if (order.billTo.street2) html += `<div class="line">${order.billTo.street2}</div>`;
+          html += `<div class="line">${order.billTo.city || ''}, ${order.billTo.state || ''} ${order.billTo.postalCode || ''}</div>`;
+          html += `<div class="line">${order.billTo.country || ''}</div>`;
+          html += '</div>';
+          html += '</div>';
+        }
+
+        // Line Items
+        if (order.items && order.items.length > 0) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Line Items</h3>';
+          html += '<table class="line-items-table">';
+          html += '<thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>';
+          html += '<tbody>';
+
+          order.items.forEach(item => {
+            html += '<tr>';
+            html += `<td>`;
+            html += `<div class="item-name">${item.name || 'Unknown Item'}</div>`;
+            html += `<div class="item-sku">SKU: ${item.sku || '-'}</div>`;
+
+            // Item options
+            if (item.options && item.options.length > 0) {
+              html += '<div class="item-options">';
+              item.options.forEach(opt => {
+                html += `<span class="item-option">${opt.name || 'Option'}: ${opt.value || '-'}</span>`;
+              });
+              html += '</div>';
+            }
+
+            html += `</td>`;
+            html += `<td>${item.quantity || 1}</td>`;
+            html += `<td>$${(item.unitPrice || 0).toFixed(2)}</td>`;
+            html += `<td>$${((item.quantity || 1) * (item.unitPrice || 0)).toFixed(2)}</td>`;
+            html += '</tr>';
+          });
+
+          html += '</tbody>';
+          html += '</table>';
+          html += '</div>';
+        }
+
+        // Cost Summary
+        html += '<div class="drawer-section">';
+        html += '<h3>Order Summary</h3>';
+        html += '<div class="cost-summary">';
+        html += `<div class="cost-row"><span>Subtotal:</span><span>$${((order.orderTotal || 0) - (order.shippingAmount || 0) - (order.taxAmount || 0)).toFixed(2)}</span></div>`;
+        html += `<div class="cost-row"><span>Shipping:</span><span>$${(order.shippingAmount || 0).toFixed(2)}</span></div>`;
+        html += `<div class="cost-row"><span>Tax:</span><span>$${(order.taxAmount || 0).toFixed(2)}</span></div>`;
+        html += `<div class="cost-row total"><span>Total:</span><span>$${(order.orderTotal || 0).toFixed(2)}</span></div>`;
+        html += '</div>';
+        html += '</div>';
+
+        // Customer Notes
+        if (order.customerNotes) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Customer Notes</h3>';
+          html += `<div class="address-box">${order.customerNotes}</div>`;
+          html += '</div>';
+        }
+
+        // Internal Notes
+        if (order.internalNotes) {
+          html += '<div class="drawer-section">';
+          html += '<h3>Internal Notes</h3>';
+          html += `<div class="address-box">${order.internalNotes}</div>`;
+          html += '</div>';
+        }
+
+        content.innerHTML = html;
+
+      } catch (error) {
+        content.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${error.message}</p></div>`;
+      }
+    }
+
+    function closeOrderDrawer() {
+      document.getElementById('orderDrawer').classList.remove('open');
+      document.getElementById('orderDrawerOverlay').classList.remove('show');
+    }
+
+    // Close drawer on ESC key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeOrderDrawer();
+      }
+    });
   </script>
 </body>
 </html>
