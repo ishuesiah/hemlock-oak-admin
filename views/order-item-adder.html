@@ -114,22 +114,28 @@
     /* Preparation Recipe Card */
     .recipe-card { display: none; }
     .recipe-card.show { display: block; }
-    .recipe-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer; user-select: none; }
+    .recipe-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
     .recipe-header h2 { margin: 0; }
-    .recipe-toggle { font-size: 1.2rem; transition: transform .2s; }
-    .recipe-toggle.collapsed { transform: rotate(-90deg); }
     .recipe-content { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
     .recipe-section { background: #f8f9fa; border-radius: 8px; padding: 1.25rem; border: 1px solid #e0e0e0; }
     .recipe-section h3 { font-size: .95rem; margin-bottom: 1rem; color: #444; display: flex; align-items: center; gap: .5rem; }
     .recipe-section h3::before { content: '📋'; font-size: 1.1rem; }
-    .recipe-items { display: flex; flex-direction: column; gap: .5rem; }
+    .recipe-items { display: flex; flex-direction: column; gap: .5rem; max-height: 400px; overflow-y: auto; }
     .recipe-item { display: flex; justify-content: space-between; align-items: center; padding: .5rem .75rem; background: #fff; border-radius: 6px; border: 1px solid #e0e0e0; font-size: .85rem; }
     .recipe-item-name { font-weight: 500; color: #333; }
     .recipe-item-count { font-weight: 700; color: #667eea; background: #eff6ff; padding: .25rem .6rem; border-radius: 4px; }
     .recipe-empty { text-align: center; padding: 1.5rem; color: #999; font-size: .85rem; font-style: italic; }
-    .recipe-summary { margin-top: 1rem; padding-top: 1rem; border-top: 2px solid #e0e0e0; font-size: .85rem; color: #666; display: flex; justify-content: space-between; }
-    .recipe-summary-item { font-weight: 600; }
-    .recipe-summary-item span { color: #667eea; font-weight: 700; }
+
+    /* Preparation Summary Bar */
+    .prep-summary-bar { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; color: #fff; cursor: pointer; transition: transform .2s, box-shadow .2s; user-select: none; }
+    .prep-summary-bar:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(102,126,234,.3); }
+    .prep-summary-stats { display: flex; gap: 2rem; }
+    .prep-stat { display: flex; flex-direction: column; align-items: center; }
+    .prep-stat-value { font-size: 1.8rem; font-weight: 700; margin-bottom: .25rem; }
+    .prep-stat-label { font-size: .8rem; opacity: 0.9; text-transform: uppercase; letter-spacing: .5px; }
+    .prep-toggle-hint { font-size: .85rem; opacity: 0.85; }
+    .prep-toggle-hint::before { content: '▼ '; font-size: .7rem; }
+    .prep-summary-bar.collapsed .prep-toggle-hint::before { content: '▶ '; }
 
     /* Order detail drawer */
     .order-drawer { position: fixed; top: 0; right: -600px; width: 600px; height: 100vh; background: #fff; box-shadow: -4px 0 12px rgba(0,0,0,.15); z-index: 1000; transition: right .3s; overflow-y: auto; }
@@ -231,30 +237,43 @@
           </div>
         </div>
 
-        <!-- Preparation Recipe -->
+        <!-- Preparation Summary (clickable) -->
+        <div class="prep-summary-bar" id="prepSummaryBar" onclick="toggleRecipe()" style="display:none">
+          <div class="prep-summary-stats">
+            <div class="prep-stat">
+              <div class="prep-stat-value" id="totalElastics">0</div>
+              <div class="prep-stat-label">Total Elastics</div>
+            </div>
+            <div class="prep-stat">
+              <div class="prep-stat-value" id="totalMonograms">0</div>
+              <div class="prep-stat-label">Total Monogram Charms</div>
+            </div>
+            <div class="prep-stat">
+              <div class="prep-stat-value" id="totalOrdersLoaded">0</div>
+              <div class="prep-stat-label">Unfulfilled Orders</div>
+            </div>
+          </div>
+          <div class="prep-toggle-hint">Click to view details</div>
+        </div>
+
+        <!-- Preparation Recipe Details (collapsible) -->
         <div class="card recipe-card" id="recipeCard">
-          <div class="recipe-header" onclick="toggleRecipe()">
-            <h2>📦 Preparation Recipe</h2>
-            <span class="recipe-toggle" id="recipeToggle">▼</span>
+          <div class="recipe-header">
+            <h2>📦 Preparation Recipe Details</h2>
           </div>
           <div class="recipe-content" id="recipeContent">
             <div class="recipe-section">
-              <h3>Elastics</h3>
+              <h3>Elastics by Variant</h3>
               <div class="recipe-items" id="elasticsRecipe">
-                <div class="recipe-empty">No elastics to prepare</div>
+                <div class="recipe-empty">No elastics found in unfulfilled orders</div>
               </div>
             </div>
             <div class="recipe-section">
-              <h3>Monogram Charms</h3>
+              <h3>Monogram Charms by Letter</h3>
               <div class="recipe-items" id="monogramsRecipe">
-                <div class="recipe-empty">No monogram charms to prepare</div>
+                <div class="recipe-empty">No monogram charms found in unfulfilled orders</div>
               </div>
             </div>
-          </div>
-          <div class="recipe-summary" id="recipeSummary" style="display:none">
-            <div class="recipe-summary-item">Total Elastics: <span id="totalElastics">0</span></div>
-            <div class="recipe-summary-item">Total Monograms: <span id="totalMonograms">0</span></div>
-            <div class="recipe-summary-item">Selected Orders: <span id="recipeOrderCount">0</span></div>
           </div>
         </div>
 
@@ -415,6 +434,9 @@
           currentPage = 1;
           renderOrders();
         }
+
+        // Update preparation recipe display
+        updateRecipeDisplay();
       } catch (error) {
         alert('Error loading orders: ' + error.message);
         console.error('Error:', error);
@@ -519,7 +541,6 @@
       const count = checkboxes.length;
       document.getElementById('selectedCount').textContent = `${count} selected`;
       document.getElementById('addItemBtn').disabled = count === 0;
-      updateRecipeDisplay(); // Update preparation recipe when selection changes
     }
 
     function selectAll() {
@@ -541,32 +562,31 @@
 
     // Preparation Recipe Functions
     function toggleRecipe() {
-      const content = document.getElementById('recipeContent');
-      const summary = document.getElementById('recipeSummary');
-      const toggle = document.getElementById('recipeToggle');
-      const isCollapsed = content.style.display === 'none';
+      const recipeCard = document.getElementById('recipeCard');
+      const summaryBar = document.getElementById('prepSummaryBar');
+      const isVisible = recipeCard.classList.contains('show');
 
-      content.style.display = isCollapsed ? 'grid' : 'none';
-      summary.style.display = isCollapsed ? 'flex' : 'none';
-      toggle.classList.toggle('collapsed', !isCollapsed);
+      if (isVisible) {
+        recipeCard.classList.remove('show');
+        summaryBar.classList.add('collapsed');
+      } else {
+        recipeCard.classList.add('show');
+        summaryBar.classList.remove('collapsed');
+      }
     }
 
     function parsePreparationRecipe() {
-      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
-      const selectedOrderNumbers = Array.from(checkboxes).map(cb => cb.value);
+      // Always parse ALL unfulfilled orders
+      const ordersToProcess = allOrders;
 
-      if (selectedOrderNumbers.length === 0) {
-        return { elastics: {}, monograms: {}, totalElastics: 0, totalMonograms: 0 };
-      }
-
-      const selectedOrders = allOrders.filter(order => selectedOrderNumbers.includes(order.orderNumber));
+      console.log(`[Recipe] Parsing ${ordersToProcess.length} unfulfilled orders...`);
 
       const elastics = {};
       const monograms = {};
       let totalElastics = 0;
       let totalMonograms = 0;
 
-      selectedOrders.forEach(order => {
+      ordersToProcess.forEach(order => {
         if (!order.items || !Array.isArray(order.items)) return;
 
         order.items.forEach(item => {
@@ -625,24 +645,32 @@
         });
       });
 
+      console.log(`[Recipe] Found ${totalElastics} total elastics in ${Object.keys(elastics).length} variants`);
+      console.log(`[Recipe] Found ${totalMonograms} total monogram charms in ${Object.keys(monograms).length} letters`);
+      console.log('[Recipe] Elastics:', elastics);
+      console.log('[Recipe] Monograms:', monograms);
+
       return { elastics, monograms, totalElastics, totalMonograms };
     }
 
     function updateRecipeDisplay() {
       const recipe = parsePreparationRecipe();
-      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
-      const selectedCount = checkboxes.length;
 
-      // Show/hide recipe card
-      const recipeCard = document.getElementById('recipeCard');
-      if (selectedCount > 0) {
-        recipeCard.classList.add('show');
+      // Show summary bar if we have orders
+      const summaryBar = document.getElementById('prepSummaryBar');
+      if (allOrders.length > 0) {
+        summaryBar.style.display = 'flex';
       } else {
-        recipeCard.classList.remove('show');
+        summaryBar.style.display = 'none';
         return;
       }
 
-      // Update elastics
+      // Update summary bar totals
+      document.getElementById('totalElastics').textContent = recipe.totalElastics;
+      document.getElementById('totalMonograms').textContent = recipe.totalMonograms;
+      document.getElementById('totalOrdersLoaded').textContent = allOrders.length;
+
+      // Update elastics details
       const elasticsContainer = document.getElementById('elasticsRecipe');
       if (Object.keys(recipe.elastics).length > 0) {
         const elasticsSorted = Object.entries(recipe.elastics).sort((a, b) => b[1] - a[1]);
@@ -653,10 +681,10 @@
           </div>
         `).join('');
       } else {
-        elasticsContainer.innerHTML = '<div class="recipe-empty">No elastics to prepare</div>';
+        elasticsContainer.innerHTML = '<div class="recipe-empty">No elastics found in unfulfilled orders</div>';
       }
 
-      // Update monograms
+      // Update monograms details
       const monogramsContainer = document.getElementById('monogramsRecipe');
       if (Object.keys(recipe.monograms).length > 0) {
         const monogramsSorted = Object.entries(recipe.monograms).sort((a, b) => a[0].localeCompare(b[0]));
@@ -667,13 +695,8 @@
           </div>
         `).join('');
       } else {
-        monogramsContainer.innerHTML = '<div class="recipe-empty">No monogram charms to prepare</div>';
+        monogramsContainer.innerHTML = '<div class="recipe-empty">No monogram charms found in unfulfilled orders</div>';
       }
-
-      // Update summary
-      document.getElementById('totalElastics').textContent = recipe.totalElastics;
-      document.getElementById('totalMonograms').textContent = recipe.totalMonograms;
-      document.getElementById('recipeOrderCount').textContent = selectedCount;
     }
 
     // Add items to selected orders
