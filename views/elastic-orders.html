@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Elastic Orders Tracker</title>
+  <title>Product Search - Unfulfilled Orders</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7fb; color: #333; }
@@ -106,12 +106,15 @@
     <!-- Main content -->
     <main class="main">
       <div class="card">
-        <h2 style="margin:0 0 .5rem 0">Elastic Orders Tracker</h2>
+        <h2 style="margin:0 0 .5rem 0">Product Search - Unfulfilled Orders</h2>
         <p style="color: #6b7280; margin: 0.5rem 0 1rem 0;">
-          Track unfulfilled ShipStation orders containing elastic/clip band items.
+          Search unfulfilled ShipStation orders for specific products or options.
         </p>
 
         <div class="row" style="margin:.5rem 0 1rem 0">
+          <label>Search for:
+            <input id="searchTerm" class="input" type="text" value="elastic, clip band, clipband" placeholder="Enter search terms (comma-separated)" style="width:300px">
+          </label>
           <label>Last
             <input id="scanDays" class="input" type="number" value="30" min="1" max="365" style="width:90px">
             days
@@ -119,15 +122,23 @@
           <label>Max pages
             <input id="maxPages" class="input" type="number" value="10" min="1" max="50" style="width:90px">
           </label>
-          <button type="button" class="btn btn-primary" id="btnScan">Scan for Elastic Orders</button>
+          <button type="button" class="btn btn-primary" id="btnScan">Search Orders</button>
           <button type="button" class="btn btn-secondary" id="btnExport" style="display:none;">Export to CSV</button>
         </div>
 
         <div id="status" class="status"></div>
 
         <div id="summaryBox" class="summary-box">
-          <div class="summary-number" id="totalCount">0</div>
-          <div class="summary-label">Unfulfilled orders with elastic items</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+            <div>
+              <div class="summary-number" id="totalCount">0</div>
+              <div class="summary-label">Orders Found</div>
+            </div>
+            <div>
+              <div class="summary-number" id="totalItems">0</div>
+              <div class="summary-label">Total Items</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -141,7 +152,7 @@
                 <th>Date</th>
                 <th>Customer</th>
                 <th>Status</th>
-                <th>Elastic Items</th>
+                <th>Matching Items</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -158,6 +169,7 @@
     const status = document.getElementById('status');
     const summaryBox = document.getElementById('summaryBox');
     const totalCount = document.getElementById('totalCount');
+    const totalItems = document.getElementById('totalItems');
     const resultsCard = document.getElementById('resultsCard');
     const resultsTbody = document.getElementById('resultsTbody');
 
@@ -196,16 +208,22 @@
     async function scanOrders() {
       const days = parseInt(document.getElementById('scanDays').value) || 30;
       const maxPages = parseInt(document.getElementById('maxPages').value) || 10;
+      const searchTerm = document.getElementById('searchTerm').value.trim() || 'elastic';
 
       btnScan.disabled = true;
-      btnScan.innerHTML = '<span class="spinner"></span>Scanning...';
-      showStatus('Scanning ShipStation for elastic orders...', 'info');
+      btnScan.innerHTML = '<span class="spinner"></span>Searching...';
+      showStatus(`Searching ShipStation for "${searchTerm}"...`, 'info');
       summaryBox.classList.remove('show');
       resultsCard.style.display = 'none';
       btnExport.style.display = 'none';
 
       try {
-        const response = await fetch(`/api/elastic-orders/scan?days=${days}&maxPages=${maxPages}`);
+        const params = new URLSearchParams({
+          days: days,
+          maxPages: maxPages,
+          searchTerm: searchTerm
+        });
+        const response = await fetch(`/api/elastic-orders/scan?${params}`);
         const data = await response.json();
 
         if (!data.success) {
@@ -216,6 +234,7 @@
 
         // Update summary
         totalCount.textContent = data.totalOrders;
+        totalItems.textContent = data.totalItemQuantity;
         summaryBox.classList.add('show');
 
         // Update table
@@ -224,7 +243,7 @@
           data.orders.forEach(order => {
             const row = document.createElement('tr');
 
-            const elasticItemsHtml = order.elasticItems
+            const matchingItemsHtml = order.matchingItems
               .map(item => {
                 let html = `<div class="elastic-item">${item.name} (${item.sku}) - Qty: ${item.quantity}`;
                 if (item.options && item.options.length > 0) {
@@ -247,7 +266,7 @@
               </td>
               <td>${getStatusBadge(order.orderStatus)}</td>
               <td>
-                <div class="elastic-items">${elasticItemsHtml}</div>
+                <div class="elastic-items">${matchingItemsHtml}</div>
               </td>
               <td>
                 <a href="${order.shipStationUrl}" target="_blank" style="color:#667eea; text-decoration:none;">
@@ -262,27 +281,27 @@
           btnExport.style.display = 'inline-block';
         }
 
-        showStatus(`Found ${data.totalOrders} unfulfilled orders with elastic items (${data.dateRange.from} to ${data.dateRange.to})`, 'ok');
+        showStatus(`Found ${data.totalOrders} orders (${data.totalItemQuantity} items matching "${data.searchTerm}") from ${data.dateRange.from} to ${data.dateRange.to}`, 'ok');
 
       } catch (error) {
         console.error('Error:', error);
         showStatus(`Error: ${error.message}`, 'err');
       } finally {
         btnScan.disabled = false;
-        btnScan.textContent = 'Scan for Elastic Orders';
+        btnScan.textContent = 'Search Orders';
       }
     }
 
     function exportToCSV() {
       if (!currentResults || !currentResults.orders) return;
 
-      const headers = ['Order Number', 'Order Date', 'Customer Name', 'Customer Email', 'Status', 'Elastic Items', 'Item Options', 'ShipStation URL'];
+      const headers = ['Order Number', 'Order Date', 'Customer Name', 'Customer Email', 'Status', 'Matching Items', 'Item Options', 'ShipStation URL'];
       const rows = currentResults.orders.map(order => {
-        const elasticItems = order.elasticItems
+        const matchingItems = order.matchingItems
           .map(item => `${item.name} (${item.sku}) x${item.quantity}`)
           .join('; ');
 
-        const itemOptions = order.elasticItems
+        const itemOptions = order.matchingItems
           .map(item => {
             if (item.options && item.options.length > 0) {
               return item.options.map(opt => `${opt.name}: ${opt.value}`).join(', ');
@@ -298,7 +317,7 @@
           order.customerName,
           order.customerEmail,
           order.orderStatus,
-          elasticItems,
+          matchingItems,
           itemOptions,
           order.shipStationUrl
         ];
@@ -313,7 +332,8 @@
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `elastic-orders-${new Date().toISOString().split('T')[0]}.csv`;
+      const searchTermSlug = currentResults.searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      a.download = `orders-${searchTermSlug}-${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -322,6 +342,11 @@
 
     btnScan.addEventListener('click', scanOrders);
     btnExport.addEventListener('click', exportToCSV);
+
+    // Auto-scan on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      scanOrders();
+    });
   </script>
 </body>
 </html>

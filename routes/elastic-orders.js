@@ -15,20 +15,18 @@ const elasticOrdersHTML = fs.readFileSync(path.join(__dirname, '../views/elastic
 router.get('/elastic-orders', requireAuth, (_req, res) => res.send(elasticOrdersHTML));
 
 /**
- * Helper function to check if an order contains elastic items
+ * Helper function to check if an order contains items matching search terms
  * Searches line item SKUs, names, and options (ItemOption array)
  */
-function containsElastic(order) {
+function containsSearchTerm(order, searchTerms) {
   if (!order || !Array.isArray(order.items)) return false;
-
-  const elasticKeywords = ['elastic', 'clip band', 'clipband'];
 
   for (const item of order.items) {
     const sku = String(item.sku || '').toLowerCase();
     const name = String(item.name || '').toLowerCase();
 
     // Check SKU and name
-    for (const keyword of elasticKeywords) {
+    for (const keyword of searchTerms) {
       if (sku.includes(keyword) || name.includes(keyword)) {
         return true;
       }
@@ -40,7 +38,7 @@ function containsElastic(order) {
         const optionName = String(option.name || '').toLowerCase();
         const optionValue = String(option.value || '').toLowerCase();
 
-        for (const keyword of elasticKeywords) {
+        for (const keyword of searchTerms) {
           if (optionName.includes(keyword) || optionValue.includes(keyword)) {
             return true;
           }
@@ -53,27 +51,35 @@ function containsElastic(order) {
 }
 
 /**
- * API endpoint to scan for elastic orders
- * GET /api/elastic-orders/scan?days=30
+ * API endpoint to scan for orders containing specific items
+ * GET /api/elastic-orders/scan?days=30&searchTerm=elastic
  */
 router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
   try {
     const days = parseInt(req.query.days) || 30;
     const pageSize = 100; // ShipStation max
     const maxPages = parseInt(req.query.maxPages) || 10;
+    const searchTermParam = req.query.searchTerm || 'elastic';
+
+    // Parse search terms - support comma-separated values
+    const searchTerms = searchTermParam
+      .split(',')
+      .map(term => term.trim().toLowerCase())
+      .filter(term => term.length > 0);
 
     // Calculate date range
     const since = new Date();
     since.setDate(since.getDate() - days);
     const createDateStart = since.toISOString().split('T')[0]; // YYYY-MM-DD format
 
-    console.log(`Scanning for elastic orders in the last ${days} days (since ${createDateStart})...`);
+    console.log(`Scanning for orders with "${searchTermParam}" in the last ${days} days (since ${createDateStart})...`);
 
     // Statuses that indicate unfulfilled orders
     const unfulfilled_statuses = ['awaiting_shipment', 'awaiting_payment', 'on_hold'];
 
-    const elasticOrders = [];
+    const matchedOrders = [];
     const processedOrderIds = new Set();
+    let totalItemQuantity = 0;
 
     // Search through each unfulfilled status
     for (const status of unfulfilled_statuses) {
@@ -100,22 +106,21 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
           break;
         }
 
-        // Filter for elastic orders
+        // Filter for matching orders
         for (const order of orders) {
           // Skip if we've already processed this order
           if (processedOrderIds.has(order.orderId)) continue;
 
-          if (containsElastic(order)) {
+          if (containsSearchTerm(order, searchTerms)) {
             processedOrderIds.add(order.orderId);
 
-            // Extract elastic items from this order
-            const elasticItems = order.items.filter(item => {
+            // Extract matching items from this order
+            const matchingItems = order.items.filter(item => {
               const sku = String(item.sku || '').toLowerCase();
               const name = String(item.name || '').toLowerCase();
-              const keywords = ['elastic', 'clip band', 'clipband'];
 
               // Check SKU and name
-              if (keywords.some(keyword => sku.includes(keyword) || name.includes(keyword))) {
+              if (searchTerms.some(keyword => sku.includes(keyword) || name.includes(keyword))) {
                 return true;
               }
 
@@ -124,7 +129,7 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
                 for (const option of item.options) {
                   const optionName = String(option.name || '').toLowerCase();
                   const optionValue = String(option.value || '').toLowerCase();
-                  if (keywords.some(keyword => optionName.includes(keyword) || optionValue.includes(keyword))) {
+                  if (searchTerms.some(keyword => optionName.includes(keyword) || optionValue.includes(keyword))) {
                     return true;
                   }
                 }
@@ -133,7 +138,11 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
               return false;
             });
 
-            elasticOrders.push({
+            // Calculate total quantity for these items
+            const orderItemQuantity = matchingItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+            totalItemQuantity += orderItemQuantity;
+
+            matchedOrders.push({
               orderId: order.orderId,
               orderNumber: order.orderNumber,
               orderKey: order.orderKey,
@@ -142,7 +151,7 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
               customerName: `${order.shipTo?.name || 'Unknown'}`,
               customerEmail: order.customerEmail || '',
               itemCount: order.items.length,
-              elasticItems: elasticItems.map(item => ({
+              matchingItems: matchingItems.map(item => ({
                 sku: item.sku,
                 name: item.name,
                 quantity: item.quantity,
@@ -166,14 +175,16 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
     }
 
     // Sort by order date (newest first)
-    elasticOrders.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
+    matchedOrders.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
 
-    console.log(`Found ${elasticOrders.length} unfulfilled orders containing elastic items`);
+    console.log(`Found ${matchedOrders.length} unfulfilled orders containing "${searchTermParam}" (${totalItemQuantity} total items)`);
 
     res.json({
       success: true,
-      totalOrders: elasticOrders.length,
-      orders: elasticOrders,
+      searchTerm: searchTermParam,
+      totalOrders: matchedOrders.length,
+      totalItemQuantity: totalItemQuantity,
+      orders: matchedOrders,
       dateRange: {
         from: createDateStart,
         to: new Date().toISOString().split('T')[0]
