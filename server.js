@@ -76,6 +76,14 @@ app.listen(PORT, () => {
   } catch (error) {
     console.error('[Server] Failed to start order change detector job:', error.message);
   }
+
+  // Start Unfulfilled Orders Sync job
+  try {
+    const { startUnfulfilledOrdersSyncJob } = require('./utils/unfulfilled-orders-sync-job');
+    startUnfulfilledOrdersSyncJob();
+  } catch (error) {
+    console.error('[Server] Failed to start unfulfilled orders sync job:', error.message);
+  }
   
   // Background sync every 30 minutes (FAST MODE - no order fetching)
   setInterval(async () => {

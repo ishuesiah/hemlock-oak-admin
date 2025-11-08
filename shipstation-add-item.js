@@ -124,11 +124,49 @@ class ShipStationAPI {
     const { data } = await this.client.get('/orders', {
       params: { orderNumber: String(orderNumber) }
     });
-    
+
     const orders = Array.isArray(data?.orders) ? data.orders :
                    Array.isArray(data) ? data : [];
-    
+
     return orders[0] || null;
+  }
+
+  async getUnfulfilledOrders(page = 1, pageSize = 500) {
+    try {
+      console.log(`[ShipStation] Fetching unfulfilled orders (page ${page}, size ${pageSize})`);
+
+      const { data } = await this.client.get('/orders', {
+        params: {
+          orderStatus: 'awaiting_shipment',
+          page: page,
+          pageSize: pageSize,
+          sortBy: 'OrderDate',
+          sortDir: 'DESC'
+        }
+      });
+
+      const orders = data?.orders || [];
+      console.log(`[ShipStation] Fetched ${orders.length} unfulfilled orders`);
+
+      // Return simplified order data
+      return orders.map(order => ({
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        orderKey: order.orderKey,
+        orderDate: order.orderDate,
+        orderStatus: order.orderStatus,
+        customerName: order.shipTo?.name || 'Unknown',
+        customerEmail: order.customerEmail,
+        orderTotal: order.orderTotal,
+        shippingAmount: order.shippingAmount,
+        itemCount: order.items?.length || 0,
+        shipTo: order.shipTo,
+        items: order.items
+      }));
+    } catch (error) {
+      console.error('[ShipStation] Error fetching unfulfilled orders:', error.message);
+      throw error;
+    }
   }
 
   async addItemToOrder(orderNumber, newItem = null) {

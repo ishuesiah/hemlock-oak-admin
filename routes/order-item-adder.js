@@ -7,6 +7,10 @@ const fs = require('fs').promises;
 // Import the working ShipStation API from shipstation-add-item.js
 const { ShipStationAPI } = require('../shipstation-add-item');
 
+// Import cache utilities
+const { loadUnfulfilledOrders } = require('../utils/unfulfilled-orders-cache');
+const { forceSyncUnfulfilledOrders } = require('../utils/unfulfilled-orders-sync-job');
+
 // Initialize customs manager on startup
 let shipstationAPI;
 (async () => {
@@ -129,6 +133,45 @@ router.post('/api/shipstation/orders/add-item', async (req, res) => {
       error: error.message || 'Failed to process orders',
       details: error.response?.data
     });
+  }
+});
+
+/**
+ * GET /api/shipstation/unfulfilled-orders - Get cached unfulfilled orders
+ */
+router.get('/api/shipstation/unfulfilled-orders', async (req, res) => {
+  try {
+    const cache = await loadUnfulfilledOrders();
+
+    res.json({
+      orders: cache.orders,
+      timestamp: cache.timestamp,
+      isStale: cache.isStale,
+      age: cache.age,
+      count: cache.orders.length
+    });
+  } catch (error) {
+    console.error('[API] Error fetching unfulfilled orders:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/shipstation/unfulfilled-orders/refresh - Force refresh unfulfilled orders cache
+ */
+router.post('/api/shipstation/unfulfilled-orders/refresh', async (req, res) => {
+  try {
+    console.log('[API] Manual refresh of unfulfilled orders requested');
+    const orders = await forceSyncUnfulfilledOrders();
+
+    res.json({
+      success: true,
+      message: `Refreshed ${orders.length} unfulfilled orders`,
+      count: orders.length
+    });
+  } catch (error) {
+    console.error('[API] Error refreshing unfulfilled orders:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

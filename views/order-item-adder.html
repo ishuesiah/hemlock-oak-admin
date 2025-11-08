@@ -22,43 +22,68 @@
     /* Header */
     .header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
     .header h1 { font-size: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .header-actions { display: flex; gap: .75rem; align-items: center; }
+
+    /* Status indicator */
+    .status-indicator { font-size: .85rem; padding: .4rem .75rem; border-radius: 6px; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
+    .status-indicator.stale { background: #fef3c7; color: #d97706; border-color: #fcd34d; }
 
     /* Content */
-    .content { padding: 2rem; }
-    .card { background: #fff; border-radius: 12px; padding: 2rem; box-shadow: 0 2px 8px rgba(0,0,0,.08); margin-bottom: 1.5rem; }
-    .card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: #333; }
+    .content { padding: 1.5rem; }
+    .card { background: #fff; border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.08); margin-bottom: 1.5rem; }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #333; }
 
-    /* Form */
-    .form-group { margin-bottom: 1.5rem; }
-    .form-group label { display: block; font-weight: 600; margin-bottom: .5rem; color: #555; font-size: .9rem; }
-    .form-group textarea { width: 100%; padding: .75rem; border: 1px solid #e0e0e0; border-radius: 6px; font-family: 'Courier New', monospace; font-size: .9rem; resize: vertical; min-height: 120px; }
-    .form-group textarea:focus { outline: none; border-color: #667eea; }
-    .help-text { font-size: .8rem; color: #666; margin-top: .5rem; }
+    /* Controls bar */
+    .controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap; }
+    .search-box { flex: 1; max-width: 400px; position: relative; }
+    .search-box input { width: 100%; padding: .6rem .6rem .6rem 2.5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; }
+    .search-box::before { content: '🔍'; position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); font-size: 1rem; }
+    .controls-right { display: flex; gap: .75rem; align-items: center; }
 
     /* Item config */
-    .item-config { background: #f8f9fa; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
-    .item-config h3 { font-size: 1rem; margin-bottom: 1rem; color: #444; }
-    .config-row { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-    .config-row input { width: 100%; padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; }
+    .item-config { background: #f8f9fa; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+    .item-config h3 { font-size: .95rem; margin-bottom: 1rem; color: #444; }
+    .config-row { display: grid; grid-template-columns: 1fr 2fr 1fr 1fr; gap: .75rem; margin-bottom: .75rem; }
+    .config-row input { width: 100%; padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .85rem; }
     .config-row input:focus { outline: none; border-color: #667eea; }
     .config-row input:disabled { background: #f5f5f5; color: #999; cursor: not-allowed; }
+    .config-row label { font-size: .8rem; font-weight: 600; color: #666; margin-bottom: .3rem; display: block; }
 
     /* Checkbox */
-    .checkbox-group { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 1rem; }
-    .checkbox-label { display: flex; align-items: center; margin-bottom: .75rem; cursor: pointer; font-size: .9rem; }
-    .checkbox-label:last-child { margin-bottom: 0; }
-    .checkbox-label input[type="checkbox"] { margin-right: .5rem; width: 18px; height: 18px; cursor: pointer; }
+    .checkbox-group { background: #fff; border: 1px solid #e0e0e0; border-radius: 6px; padding: .75rem; }
+    .checkbox-label { display: flex; align-items: center; cursor: pointer; font-size: .85rem; }
+    .checkbox-label input[type="checkbox"] { margin-right: .5rem; width: 16px; height: 16px; cursor: pointer; }
+
+    /* Table */
+    .table-container { background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e0e0e0; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; }
+    th { padding: .75rem; text-align: left; font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .5px; color: #666; white-space: nowrap; }
+    td { padding: .75rem; border-bottom: 1px solid #f0f0f0; font-size: .85rem; }
+    tbody tr:hover { background: #f8f9fa; }
+    tbody tr.selected { background: #eff6ff; }
+    td input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+
+    /* Pagination */
+    .pagination { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: #f8f9fa; border-top: 1px solid #e0e0e0; font-size: .85rem; }
+    .pagination-info { color: #666; }
+    .pagination-buttons { display: flex; gap: .5rem; }
+    .pagination-buttons button { padding: .4rem .75rem; border: 1px solid #e0e0e0; background: #fff; border-radius: 4px; cursor: pointer; font-size: .85rem; }
+    .pagination-buttons button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pagination-buttons button:not(:disabled):hover { background: #f5f5f5; }
+    .pagination-buttons button.active { background: #667eea; color: #fff; border-color: #667eea; }
 
     /* Buttons */
-    .btn { padding: .75rem 1.5rem; border-radius: 6px; border: none; font-size: .9rem; cursor: pointer; transition: all .2s; font-weight: 600; display: inline-block; }
+    .btn { padding: .65rem 1.25rem; border-radius: 6px; border: none; font-size: .85rem; cursor: pointer; transition: all .2s; font-weight: 600; display: inline-block; }
     .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(102,126,234,.3); }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-    .btn-secondary { background: #6c757d; color: #fff; margin-left: .5rem; }
+    .btn-secondary { background: #6c757d; color: #fff; }
     .btn-secondary:hover { background: #5a6268; }
+    .btn-small { padding: .4rem .75rem; font-size: .8rem; }
 
     /* Loading */
-    .loading { display: none; text-align: center; padding: 2rem; }
+    .loading { display: none; text-align: center; padding: 3rem; }
     .loading.show { display: block; }
     .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -81,6 +106,10 @@
     .result-item strong { display: block; margin-bottom: .5rem; color: #333; }
     .result-item .message { font-size: .9rem; color: #666; }
     .result-item .meta { font-size: .8rem; color: #999; margin-top: .5rem; }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 3rem; color: #999; }
+    .empty-state h3 { color: #666; margin-bottom: .5rem; }
   </style>
 </head>
 <body>
@@ -102,63 +131,105 @@
     <div class="main-content">
       <header class="header">
         <h1>🎁 Add Items to Orders</h1>
+        <div class="header-actions">
+          <span class="status-indicator" id="cacheStatus">Loading...</span>
+          <button class="btn btn-small btn-secondary" onclick="refreshOrders()">Refresh</button>
+        </div>
       </header>
 
       <div class="content">
+        <!-- Item Configuration -->
         <div class="card">
-          <h2>Add Complimentary Items to ShipStation Orders</h2>
-
-          <form id="addItemForm">
-            <!-- Item Configuration -->
-            <div class="item-config">
-              <h3>Item Configuration</h3>
-              <div class="config-row">
-                <div>
-                  <label>SKU</label>
-                  <input type="text" id="itemSku" value="LIST-DEF" placeholder="SKU">
-                </div>
-                <div>
-                  <label>Product Name</label>
-                  <input type="text" id="itemName" value="Complimentary stickers" placeholder="Product name">
-                </div>
-                <div>
-                  <label>Quantity</label>
-                  <input type="number" id="itemQuantity" value="2" step="1" min="1" placeholder="1">
-                </div>
-                <div>
-                  <label>Unit Price ($)</label>
-                  <input type="number" id="itemPrice" value="0.50" step="0.01" min="0" placeholder="0.00">
-                </div>
+          <h2>Item Configuration</h2>
+          <div class="item-config">
+            <div class="config-row">
+              <div>
+                <label>SKU</label>
+                <input type="text" id="itemSku" value="LIST-DEF" placeholder="SKU">
               </div>
-              <div class="checkbox-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="useDefaultItem" checked>
-                  <span>Use default item (Complimentary stickers, 2 qty @ $0.50 each = $1.00 total)</span>
-                </label>
+              <div>
+                <label>Product Name</label>
+                <input type="text" id="itemName" value="Complimentary stickers" placeholder="Product name">
+              </div>
+              <div>
+                <label>Quantity</label>
+                <input type="number" id="itemQuantity" value="2" step="1" min="1" placeholder="1">
+              </div>
+              <div>
+                <label>Unit Price ($)</label>
+                <input type="number" id="itemPrice" value="0.50" step="0.01" min="0" placeholder="0.00">
               </div>
             </div>
-
-            <!-- Order Numbers Input -->
-            <div class="form-group">
-              <label for="orderNumbers">Order Numbers</label>
-              <textarea
-                id="orderNumbers"
-                placeholder="Enter order numbers, one per line or comma-separated&#10;&#10;Example:&#10;50218&#10;50175&#10;51655&#10;&#10;Or: 50218, 50175, 51655"
-                rows="10"
-              ></textarea>
-              <div class="help-text">
-                Enter order numbers (one per line or comma-separated). The system will add the item and update customs declarations for each order.
-              </div>
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="useDefaultItem" checked>
+                <span>Use default item (Complimentary stickers, 2 qty @ $0.50 each = $1.00 total)</span>
+              </label>
             </div>
+          </div>
+        </div>
 
-            <button type="submit" class="btn btn-primary" id="submitBtn">Add Items to Orders</button>
-            <button type="button" class="btn btn-secondary" onclick="document.getElementById('orderNumbers').value=''">Clear</button>
-          </form>
+        <!-- Order Selection -->
+        <div class="card">
+          <h2>Select Unfulfilled Orders</h2>
+
+          <!-- Controls -->
+          <div class="controls">
+            <div class="search-box">
+              <input type="text" id="searchBox" placeholder="Search by order number, customer name, or email..." oninput="filterOrders()">
+            </div>
+            <div class="controls-right">
+              <span id="selectedCount">0 selected</span>
+              <button class="btn btn-small btn-secondary" onclick="selectAll()">Select All</button>
+              <button class="btn btn-small btn-secondary" onclick="clearSelection()">Clear</button>
+            </div>
+          </div>
 
           <!-- Loading State -->
-          <div class="loading" id="loading">
+          <div class="loading" id="ordersLoading">
             <div class="spinner"></div>
-            <p>Processing orders... Please wait.</p>
+            <p>Loading unfulfilled orders...</p>
+          </div>
+
+          <!-- Orders Table -->
+          <div class="table-container" id="ordersTable" style="display:none">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:40px"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+                  <th>Order #</th>
+                  <th>Customer</th>
+                  <th>Email</th>
+                  <th>Date</th>
+                  <th>Items</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="ordersTableBody">
+                <!-- Populated by JavaScript -->
+              </tbody>
+            </table>
+            <div class="pagination">
+              <div class="pagination-info" id="paginationInfo">Showing 0-0 of 0</div>
+              <div class="pagination-buttons">
+                <button onclick="previousPage()" id="prevBtn">Previous</button>
+                <span id="pageNumbers"></span>
+                <button onclick="nextPage()" id="nextBtn">Next</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="emptyState" style="display:none">
+            <h3>No unfulfilled orders found</h3>
+            <p>There are currently no awaiting shipment orders in ShipStation.</p>
+          </div>
+
+          <!-- Action Button -->
+          <div style="margin-top:1.5rem; text-align:right">
+            <button class="btn btn-primary" id="addItemBtn" onclick="addItemsToSelectedOrders()" disabled>
+              Add Item to Selected Orders
+            </button>
           </div>
         </div>
 
@@ -173,52 +244,205 @@
   </div>
 
   <script>
-    // Handle checkbox interactions
-    document.getElementById('useDefaultItem').addEventListener('change', function() {
-      const useDefault = this.checked;
-      document.getElementById('itemSku').disabled = useDefault;
-      document.getElementById('itemName').disabled = useDefault;
-      document.getElementById('itemQuantity').disabled = useDefault;
-      document.getElementById('itemPrice').disabled = useDefault;
+    let allOrders = [];
+    let filteredOrders = [];
+    let currentPage = 1;
+    const ordersPerPage = 50;
 
-      if (useDefault) {
-        document.getElementById('itemSku').value = 'LIST-DEF';
-        document.getElementById('itemName').value = 'Complimentary stickers';
-        document.getElementById('itemQuantity').value = '2';
-        document.getElementById('itemPrice').value = '0.50';
-      }
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      loadOrders();
+      setupItemConfiguration();
     });
 
-    // Initialize with default item
-    document.getElementById('itemSku').disabled = true;
-    document.getElementById('itemName').disabled = true;
-    document.getElementById('itemQuantity').disabled = true;
-    document.getElementById('itemPrice').disabled = true;
+    // Item configuration
+    function setupItemConfiguration() {
+      document.getElementById('useDefaultItem').addEventListener('change', function() {
+        const useDefault = this.checked;
+        document.getElementById('itemSku').disabled = useDefault;
+        document.getElementById('itemName').disabled = useDefault;
+        document.getElementById('itemQuantity').disabled = useDefault;
+        document.getElementById('itemPrice').disabled = useDefault;
 
-    // Form submission
-    document.getElementById('addItemForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
+        if (useDefault) {
+          document.getElementById('itemSku').value = 'LIST-DEF';
+          document.getElementById('itemName').value = 'Complimentary stickers';
+          document.getElementById('itemQuantity').value = '2';
+          document.getElementById('itemPrice').value = '0.50';
+        }
+      });
 
-      const orderNumbersText = document.getElementById('orderNumbers').value.trim();
-      if (!orderNumbersText) {
-        alert('Please enter at least one order number');
-        return;
+      // Initialize disabled
+      document.getElementById('itemSku').disabled = true;
+      document.getElementById('itemName').disabled = true;
+      document.getElementById('itemQuantity').disabled = true;
+      document.getElementById('itemPrice').disabled = true;
+    }
+
+    // Load orders from API
+    async function loadOrders() {
+      document.getElementById('ordersLoading').classList.add('show');
+      document.getElementById('ordersTable').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'none';
+
+      try {
+        const response = await fetch('/api/shipstation/unfulfilled-orders');
+        const data = await response.json();
+
+        allOrders = data.orders || [];
+        filteredOrders = [...allOrders];
+
+        // Update cache status
+        const cacheStatus = document.getElementById('cacheStatus');
+        if (data.isStale) {
+          cacheStatus.textContent = 'Cache updating...';
+          cacheStatus.className = 'status-indicator stale';
+        } else {
+          const age = Math.round(data.age / 1000 / 60);
+          cacheStatus.textContent = `Updated ${age}m ago`;
+          cacheStatus.className = 'status-indicator';
+        }
+
+        if (allOrders.length === 0) {
+          document.getElementById('emptyState').style.display = 'block';
+        } else {
+          document.getElementById('ordersTable').style.display = 'block';
+          currentPage = 1;
+          renderOrders();
+        }
+      } catch (error) {
+        alert('Error loading orders: ' + error.message);
+        console.error('Error:', error);
+      } finally {
+        document.getElementById('ordersLoading').classList.remove('show');
+      }
+    }
+
+    // Refresh orders (force sync)
+    async function refreshOrders() {
+      const cacheStatus = document.getElementById('cacheStatus');
+      cacheStatus.textContent = 'Refreshing...';
+      cacheStatus.className = 'status-indicator stale';
+
+      try {
+        await fetch('/api/shipstation/unfulfilled-orders/refresh', { method: 'POST' });
+        await loadOrders();
+      } catch (error) {
+        alert('Error refreshing orders: ' + error.message);
+      }
+    }
+
+    // Filter orders by search
+    function filterOrders() {
+      const search = document.getElementById('searchBox').value.toLowerCase();
+      filteredOrders = allOrders.filter(order => {
+        return order.orderNumber.toLowerCase().includes(search) ||
+               order.customerName.toLowerCase().includes(search) ||
+               (order.customerEmail || '').toLowerCase().includes(search);
+      });
+      currentPage = 1;
+      renderOrders();
+    }
+
+    // Render orders table
+    function renderOrders() {
+      const start = (currentPage - 1) * ordersPerPage;
+      const end = start + ordersPerPage;
+      const pageOrders = filteredOrders.slice(start, end);
+
+      const tbody = document.getElementById('ordersTableBody');
+      tbody.innerHTML = '';
+
+      pageOrders.forEach(order => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><input type="checkbox" class="order-checkbox" value="${order.orderNumber}" onchange="updateSelectedCount()"></td>
+          <td><strong>${order.orderNumber}</strong></td>
+          <td>${order.customerName}</td>
+          <td>${order.customerEmail || '-'}</td>
+          <td>${new Date(order.orderDate).toLocaleDateString()}</td>
+          <td>${order.itemCount}</td>
+          <td>$${order.orderTotal.toFixed(2)}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // Update pagination info
+      const totalOrders = filteredOrders.length;
+      const showingStart = totalOrders === 0 ? 0 : start + 1;
+      const showingEnd = Math.min(end, totalOrders);
+      document.getElementById('paginationInfo').textContent = `Showing ${showingStart}-${showingEnd} of ${totalOrders}`;
+
+      // Update buttons
+      document.getElementById('prevBtn').disabled = currentPage === 1;
+      document.getElementById('nextBtn').disabled = end >= totalOrders;
+
+      // Update page numbers
+      const totalPages = Math.ceil(totalOrders / ordersPerPage);
+      const pageNumbers = document.getElementById('pageNumbers');
+      pageNumbers.innerHTML = '';
+      for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.onclick = () => { currentPage = i; renderOrders(); };
+        if (i === currentPage) btn.className = 'active';
+        pageNumbers.appendChild(btn);
       }
 
-      // Parse order numbers (handle both newlines and commas)
-      const orderNumbers = orderNumbersText
-        .split(/[,\n]+/)
-        .map(num => num.trim())
-        .filter(num => num.length > 0);
+      updateSelectedCount();
+    }
+
+    // Pagination
+    function previousPage() {
+      if (currentPage > 1) {
+        currentPage--;
+        renderOrders();
+      }
+    }
+
+    function nextPage() {
+      const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderOrders();
+      }
+    }
+
+    // Selection
+    function updateSelectedCount() {
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      const count = checkboxes.length;
+      document.getElementById('selectedCount').textContent = `${count} selected`;
+      document.getElementById('addItemBtn').disabled = count === 0;
+    }
+
+    function selectAll() {
+      document.querySelectorAll('.order-checkbox').forEach(cb => cb.checked = true);
+      updateSelectedCount();
+    }
+
+    function clearSelection() {
+      document.querySelectorAll('.order-checkbox').forEach(cb => cb.checked = false);
+      document.getElementById('selectAllCheckbox').checked = false;
+      updateSelectedCount();
+    }
+
+    function toggleSelectAll() {
+      const selectAll = document.getElementById('selectAllCheckbox').checked;
+      document.querySelectorAll('.order-checkbox').forEach(cb => cb.checked = selectAll);
+      updateSelectedCount();
+    }
+
+    // Add items to selected orders
+    async function addItemsToSelectedOrders() {
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      const orderNumbers = Array.from(checkboxes).map(cb => cb.value);
 
       if (orderNumbers.length === 0) {
-        alert('Please enter valid order numbers');
+        alert('Please select at least one order');
         return;
       }
 
-      const useDefault = document.getElementById('useDefaultItem').checked;
-
-      // Prepare item data (always send it, whether default or custom)
       const itemData = {
         sku: document.getElementById('itemSku').value,
         name: document.getElementById('itemName').value,
@@ -226,22 +450,16 @@
         price: parseFloat(document.getElementById('itemPrice').value)
       };
 
-      // Prepare request data
-      const requestData = {
-        orderNumbers: orderNumbers,
-        item: itemData
-      };
-
-      // Show loading
-      document.getElementById('loading').classList.add('show');
-      document.getElementById('results').classList.remove('show');
-      document.getElementById('submitBtn').disabled = true;
+      // Disable button
+      const btn = document.getElementById('addItemBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
 
       try {
         const response = await fetch('/api/shipstation/orders/add-item', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestData)
+          body: JSON.stringify({ orderNumbers, item: itemData })
         });
 
         const result = await response.json();
@@ -253,20 +471,22 @@
         // Display results
         displayResults(result);
 
+        // Reload orders to refresh the list
+        await loadOrders();
+
       } catch (error) {
         alert('Error: ' + error.message);
         console.error('Error:', error);
       } finally {
-        document.getElementById('loading').classList.remove('show');
-        document.getElementById('submitBtn').disabled = false;
+        btn.disabled = false;
+        btn.textContent = 'Add Item to Selected Orders';
       }
-    });
+    }
 
+    // Display results
     function displayResults(result) {
-      // Show results section
       document.getElementById('results').classList.add('show');
 
-      // Display stats
       const statsHtml = `
         <div class="stat-card">
           <div class="stat-value">${result.total || 0}</div>
@@ -287,7 +507,6 @@
       `;
       document.getElementById('stats').innerHTML = statsHtml;
 
-      // Display details
       let detailsHtml = '';
       if (result.details && result.details.length > 0) {
         result.details.forEach(detail => {
@@ -314,11 +533,12 @@
             </div>
           `;
         });
-      } else {
-        detailsHtml = '<p>No details available</p>';
       }
 
       document.getElementById('resultDetails').innerHTML = detailsHtml;
+
+      // Scroll to results
+      document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
     }
   </script>
 </body>
