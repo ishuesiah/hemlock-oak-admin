@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Elastic Orders Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7fb; color: #333; }
+
+    /* Layout with sidebar */
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { background: #111827; color: #fff; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+    .nav-title { font-weight: 700; opacity: .9; margin-bottom: .5rem; }
+    .nav-link { display: block; color: #c7cbe1; text-decoration: none; padding: .5rem .6rem; border-radius: 6px; }
+    .nav-link:hover { background: #1f2937; color: #fff; }
+    .nav-link.active { background: #4f46e5; color: #fff; }
+
+    /* Main content */
+    .main { padding: 1.25rem 1.5rem; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 1px 2px rgba(0,0,0,.03); padding: 1rem; margin-bottom: 1rem; }
+    .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .input { padding: .6rem .7rem; border: 1px solid #d1d5db; border-radius: 8px; min-width: 260px; }
+    .btn { border: 0; border-radius: 8px; padding: .6rem .9rem; font-weight: 600; cursor: pointer; }
+    .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+    .btn-secondary { background: #fff; border: 1px solid #e5e7eb; }
+    .status { padding: .6rem .8rem; border-radius: 8px; margin: .5rem 0; display: none; }
+    .status.show { display: block; }
+    .status.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .status.err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .status.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    /* Summary box */
+    .summary-box {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      padding: 1.5rem;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .summary-box.show { display: block; }
+    .summary-number { font-size: 3rem; font-weight: 700; margin: 0; }
+    .summary-label { font-size: 1.1rem; opacity: 0.9; margin-top: 0.5rem; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; }
+    thead { position: sticky; top: 0; background: #f8f9fa; }
+    th { padding: .75rem; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600; }
+    td { padding: .75rem; border-bottom: 1px solid #f3f4f6; }
+    tbody tr:hover { background: #f9fafb; }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: .25rem .5rem;
+      border-radius: 4px;
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-awaiting { background: #fef3c7; color: #92400e; }
+    .badge-hold { background: #fee2e2; color: #991b1b; }
+    .badge-payment { background: #dbeafe; color: #1e40af; }
+
+    /* Elastic items list */
+    .elastic-items {
+      font-size: 0.9rem;
+      color: #6b7280;
+      margin-top: 0.25rem;
+    }
+    .elastic-item {
+      background: #f3f4f6;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      margin: 0.25rem 0;
+      display: inline-block;
+    }
+
+    .spinner {
+      border: 3px solid #f3f4f6;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="nav-title">Hemlock & Oak</div>
+      <a class="nav-link" href="/">Product Manager</a>
+      <a class="nav-link" href="/shipstation">ShipStation Customs Editor</a>
+      <a class="nav-link" href="/vip-customers">VIP Customers</a>
+      <a class="nav-link" href="/order-formatter">Order Formatter</a>
+      <a class="nav-link active" href="/elastic-orders">Elastic Orders</a>
+      <div style="margin-top:auto"></div>
+      <a class="nav-link" href="/logout">Logout</a>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+      <div class="card">
+        <h2 style="margin:0 0 .5rem 0">Elastic Orders Tracker</h2>
+        <p style="color: #6b7280; margin: 0.5rem 0 1rem 0;">
+          Track unfulfilled ShipStation orders containing elastic/clip band items.
+        </p>
+
+        <div class="row" style="margin:.5rem 0 1rem 0">
+          <label>Last
+            <input id="scanDays" class="input" type="number" value="30" min="1" max="365" style="width:90px">
+            days
+          </label>
+          <label>Max pages
+            <input id="maxPages" class="input" type="number" value="10" min="1" max="50" style="width:90px">
+          </label>
+          <button type="button" class="btn btn-primary" id="btnScan">Scan for Elastic Orders</button>
+          <button type="button" class="btn btn-secondary" id="btnExport" style="display:none;">Export to CSV</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div id="summaryBox" class="summary-box">
+          <div class="summary-number" id="totalCount">0</div>
+          <div class="summary-label">Unfulfilled orders with elastic items</div>
+        </div>
+      </div>
+
+      <div class="card" id="resultsCard" style="display:none;">
+        <h3 style="margin:0 0 1rem 0">Order Details</h3>
+        <div style="overflow:auto; max-height:600px; border:1px solid #e5e7eb; border-radius:10px;">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Elastic Items</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const btnScan = document.getElementById('btnScan');
+    const btnExport = document.getElementById('btnExport');
+    const status = document.getElementById('status');
+    const summaryBox = document.getElementById('summaryBox');
+    const totalCount = document.getElementById('totalCount');
+    const resultsCard = document.getElementById('resultsCard');
+    const resultsTbody = document.getElementById('resultsTbody');
+
+    let currentResults = null;
+
+    function showStatus(msg, type) {
+      status.textContent = msg;
+      status.className = `status show ${type}`;
+    }
+
+    function hideStatus() {
+      status.className = 'status';
+    }
+
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    function getStatusBadge(status) {
+      const classes = {
+        'awaiting_shipment': 'badge-awaiting',
+        'on_hold': 'badge-hold',
+        'awaiting_payment': 'badge-payment'
+      };
+      const labels = {
+        'awaiting_shipment': 'Awaiting Shipment',
+        'on_hold': 'On Hold',
+        'awaiting_payment': 'Awaiting Payment'
+      };
+      const className = classes[status] || 'badge-awaiting';
+      const label = labels[status] || status;
+      return `<span class="badge ${className}">${label}</span>`;
+    }
+
+    async function scanOrders() {
+      const days = parseInt(document.getElementById('scanDays').value) || 30;
+      const maxPages = parseInt(document.getElementById('maxPages').value) || 10;
+
+      btnScan.disabled = true;
+      btnScan.innerHTML = '<span class="spinner"></span>Scanning...';
+      showStatus('Scanning ShipStation for elastic orders...', 'info');
+      summaryBox.classList.remove('show');
+      resultsCard.style.display = 'none';
+      btnExport.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/elastic-orders/scan?days=${days}&maxPages=${maxPages}`);
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to scan orders');
+        }
+
+        currentResults = data;
+
+        // Update summary
+        totalCount.textContent = data.totalOrders;
+        summaryBox.classList.add('show');
+
+        // Update table
+        resultsTbody.innerHTML = '';
+        if (data.orders && data.orders.length > 0) {
+          data.orders.forEach(order => {
+            const row = document.createElement('tr');
+
+            const elasticItemsHtml = order.elasticItems
+              .map(item => `<div class="elastic-item">${item.name} (${item.sku}) - Qty: ${item.quantity}</div>`)
+              .join('');
+
+            row.innerHTML = `
+              <td><strong>#${order.orderNumber}</strong></td>
+              <td>${formatDate(order.orderDate)}</td>
+              <td>
+                ${order.customerName}<br>
+                <small style="color:#6b7280;">${order.customerEmail}</small>
+              </td>
+              <td>${getStatusBadge(order.orderStatus)}</td>
+              <td>
+                <div class="elastic-items">${elasticItemsHtml}</div>
+              </td>
+              <td>
+                <a href="${order.shipStationUrl}" target="_blank" style="color:#667eea; text-decoration:none;">
+                  View in ShipStation →
+                </a>
+              </td>
+            `;
+            resultsTbody.appendChild(row);
+          });
+
+          resultsCard.style.display = 'block';
+          btnExport.style.display = 'inline-block';
+        }
+
+        showStatus(`Found ${data.totalOrders} unfulfilled orders with elastic items (${data.dateRange.from} to ${data.dateRange.to})`, 'ok');
+
+      } catch (error) {
+        console.error('Error:', error);
+        showStatus(`Error: ${error.message}`, 'err');
+      } finally {
+        btnScan.disabled = false;
+        btnScan.textContent = 'Scan for Elastic Orders';
+      }
+    }
+
+    function exportToCSV() {
+      if (!currentResults || !currentResults.orders) return;
+
+      const headers = ['Order Number', 'Order Date', 'Customer Name', 'Customer Email', 'Status', 'Elastic Items', 'ShipStation URL'];
+      const rows = currentResults.orders.map(order => {
+        const elasticItems = order.elasticItems
+          .map(item => `${item.name} (${item.sku}) x${item.quantity}`)
+          .join('; ');
+
+        return [
+          order.orderNumber,
+          order.orderDate,
+          order.customerName,
+          order.customerEmail,
+          order.orderStatus,
+          elasticItems,
+          order.shipStationUrl
+        ];
+      });
+
+      let csv = headers.join(',') + '\n';
+      rows.forEach(row => {
+        csv += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',') + '\n';
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `elastic-orders-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }
+
+    btnScan.addEventListener('click', scanOrders);
+    btnExport.addEventListener('click', exportToCSV);
+  </script>
+</body>
+</html>

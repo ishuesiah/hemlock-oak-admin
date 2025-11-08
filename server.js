@@ -39,6 +39,7 @@ const vipCustomersRoutes = require('./routes/vip-customers');
 const orderFormatterRoutes = require('./routes/order-formatter');
 const orderChangeDetectorRoutes = require('./routes/order-change-detector');
 const orderItemAdderRoutes = require('./routes/order-item-adder'); // ← Move import here
+const elasticOrdersRoutes = require('./routes/elastic-orders');
 
 // Mount routes (ALL TOGETHER)
 app.use(authRoutes);
@@ -48,6 +49,7 @@ app.use(vipCustomersRoutes);
 app.use(orderFormatterRoutes);
 app.use(orderChangeDetectorRoutes);
 app.use(orderItemAdderRoutes); // ← ADD HERE, not at line 20
+app.use(elasticOrdersRoutes);
 
 // ==================== ERROR HANDLING ====================
 
@@ -105,7 +107,8 @@ app.listen(PORT, () => {
     - VIP Customers:          http://localhost:${PORT}/vip-customers
     - Order Formatter:        http://localhost:${PORT}/order-formatter
     - Order Change Detector:  http://localhost:${PORT}/order-change-detector
-    - Order Item Adder:       http://localhost:${PORT}/order-item-adder  ← ADD THIS
+    - Order Item Adder:       http://localhost:${PORT}/order-item-adder
+    - Elastic Orders:         http://localhost:${PORT}/elastic-orders
     ========================================
     Server running on port ${PORT}
     ========================================
