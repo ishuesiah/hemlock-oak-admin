@@ -84,7 +84,8 @@ router.post('/api/shipstation/orders/add-item', async (req, res) => {
     // Process each order
     for (const orderNumber of orderNumbers) {
       try {
-        const result = await shipstationAPI.addItemToOrder(orderNumber, item || null);
+        // Pass the item data with custom quantity/price if provided
+        const result = await shipstationAPI.addItemToOrder(orderNumber, item);
 
         if (result.message && result.message.includes('already exists')) {
           results.skipped++;

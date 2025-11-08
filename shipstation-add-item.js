@@ -143,23 +143,23 @@ class ShipStationAPI {
       
       console.log(`[ShipStation] Found order with ${existingOrder.items?.length || 0} items`);
       
-      // Prepare new item
-      const itemToAdd = newItem || {
-        lineItemKey: `LIST-DEF-${Date.now()}`,
-        sku: 'LIST-DEF',
-        name: 'Complimentary stickers',
-        imageUrl: '',
-        weight: {},
-        quantity: 2,
-        unitPrice: 0.50,
-        taxAmount: 0,
-        shippingAmount: 0,
-        warehouseLocation: '',
-        options: [],
-        productId: null,
-        fulfillmentSku: 'LIST-DEF',
-        adjustment: false,
-        upc: ''
+      // Prepare new item with defaults or custom values
+      const itemToAdd = {
+        lineItemKey: newItem?.lineItemKey || `${newItem?.sku || 'LIST-DEF'}-${Date.now()}`,
+        sku: newItem?.sku || 'LIST-DEF',
+        name: newItem?.name || 'Complimentary stickers',
+        imageUrl: newItem?.imageUrl || '',
+        weight: newItem?.weight || {},
+        quantity: newItem?.quantity || 2,
+        unitPrice: newItem?.price || 0.50,
+        taxAmount: newItem?.taxAmount || 0,
+        shippingAmount: newItem?.shippingAmount || 0,
+        warehouseLocation: newItem?.warehouseLocation || '',
+        options: newItem?.options || [],
+        productId: newItem?.productId || null,
+        fulfillmentSku: newItem?.fulfillmentSku || newItem?.sku || 'LIST-DEF',
+        adjustment: newItem?.adjustment || false,
+        upc: newItem?.upc || ''
       };
       
       // Check for duplicates
