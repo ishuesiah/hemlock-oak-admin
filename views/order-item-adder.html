@@ -410,11 +410,17 @@
       document.getElementById('emptyState').style.display = 'none';
 
       try {
+        console.log('[Orders] Fetching unfulfilled orders from cache...');
         const response = await fetch('/api/shipstation/unfulfilled-orders');
         const data = await response.json();
 
         allOrders = data.orders || [];
         filteredOrders = [...allOrders];
+
+        console.log(`[Orders] Loaded ${allOrders.length} orders from cache`);
+        console.log(`[Orders] Cache timestamp: ${new Date(data.timestamp).toLocaleString()}`);
+        console.log(`[Orders] Cache age: ${Math.round(data.age / 1000 / 60)} minutes`);
+        console.log(`[Orders] Cache is stale: ${data.isStale}`);
 
         // Update cache status
         const cacheStatus = document.getElementById('cacheStatus');
@@ -423,7 +429,7 @@
           cacheStatus.className = 'status-indicator stale';
         } else {
           const age = Math.round(data.age / 1000 / 60);
-          cacheStatus.textContent = `Updated ${age}m ago`;
+          cacheStatus.textContent = `Updated ${age}m ago (${allOrders.length} orders)`;
           cacheStatus.className = 'status-indicator';
         }
 
@@ -579,24 +585,39 @@
       // Always parse ALL unfulfilled orders
       const ordersToProcess = allOrders;
 
-      console.log(`[Recipe] Parsing ${ordersToProcess.length} unfulfilled orders...`);
+      console.log(`[Recipe] ========== PARSING ${ordersToProcess.length} UNFULFILLED ORDERS ==========`);
 
       const elastics = {};
       const monograms = {};
       let totalElastics = 0;
       let totalMonograms = 0;
+      let elasticItemsFound = 0;
+      let monogramItemsFound = 0;
+      let totalItemsProcessed = 0;
+      let sampleItemsLogged = 0;
 
       ordersToProcess.forEach(order => {
         if (!order.items || !Array.isArray(order.items)) return;
 
         order.items.forEach(item => {
+          totalItemsProcessed++;
           const itemName = (item.name || '').toLowerCase();
           const itemSku = (item.sku || '').toLowerCase();
           const quantity = item.quantity || 1;
 
+          // Log first 5 items as samples
+          if (sampleItemsLogged < 5) {
+            console.log(`[Recipe Sample ${sampleItemsLogged + 1}] "${item.name}" (SKU: ${item.sku}, Qty: ${quantity})`);
+            if (item.options && item.options.length > 0) {
+              console.log(`  Options:`, item.options.map(o => `${o.name}: ${o.value}`).join(', '));
+            }
+            sampleItemsLogged++;
+          }
+
           // Check if this is an elastic item
           // Looking for items with "elastic" in name or SKU
           if (itemName.includes('elastic') || itemSku.includes('elastic')) {
+            elasticItemsFound++;
             // Try to extract variant from item options or use name
             let variant = 'Unknown Elastic';
 
@@ -627,28 +648,41 @@
                                  itemSku.includes('monogram') ||
                                  itemSku.includes('charm');
 
-          if (isMonogramItem && item.options && Array.isArray(item.options)) {
-            // Look for monogram letter in options
-            const monogramOption = item.options.find(opt =>
-              (opt.name || '').toLowerCase().match(/monogram|letter|initial|personalization/)
-            );
+          if (isMonogramItem) {
+            monogramItemsFound++;
+            if (item.options && Array.isArray(item.options)) {
+              // Look for monogram letter in options
+              const monogramOption = item.options.find(opt =>
+                (opt.name || '').toLowerCase().match(/monogram|letter|initial|personalization/)
+              );
 
-            if (monogramOption && monogramOption.value) {
-              const letter = monogramOption.value.trim().toUpperCase();
-              // Only count if it's a single letter A-Z
-              if (letter.length > 0 && letter.match(/^[A-Z]+$/)) {
-                monograms[letter] = (monograms[letter] || 0) + quantity;
-                totalMonograms += quantity;
+              if (monogramOption && monogramOption.value) {
+                const letter = monogramOption.value.trim().toUpperCase();
+                // Only count if it's a single letter A-Z
+                if (letter.length > 0 && letter.match(/^[A-Z]+$/)) {
+                  monograms[letter] = (monograms[letter] || 0) + quantity;
+                  totalMonograms += quantity;
+                } else if (monogramItemsFound <= 3) {
+                  console.log(`[Recipe] Monogram item "${item.name}" has invalid letter: "${letter}"`);
+                }
+              } else if (monogramItemsFound <= 3) {
+                console.log(`[Recipe] Monogram item "${item.name}" has no matching option. Options:`, item.options.map(o => o.name));
               }
+            } else if (monogramItemsFound <= 3) {
+              console.log(`[Recipe] Monogram item "${item.name}" has no options array`);
             }
           }
         });
       });
 
-      console.log(`[Recipe] Found ${totalElastics} total elastics in ${Object.keys(elastics).length} variants`);
-      console.log(`[Recipe] Found ${totalMonograms} total monogram charms in ${Object.keys(monograms).length} letters`);
-      console.log('[Recipe] Elastics:', elastics);
-      console.log('[Recipe] Monograms:', monograms);
+      console.log(`[Recipe] ========== SUMMARY ==========`);
+      console.log(`[Recipe] Total orders: ${ordersToProcess.length}`);
+      console.log(`[Recipe] Total items processed: ${totalItemsProcessed}`);
+      console.log(`[Recipe] Elastic items found: ${elasticItemsFound} → ${totalElastics} total elastics in ${Object.keys(elastics).length} variants`);
+      console.log(`[Recipe] Monogram items found: ${monogramItemsFound} → ${totalMonograms} total monogram charms in ${Object.keys(monograms).length} letters`);
+      console.log('[Recipe] Elastic variants:', elastics);
+      console.log('[Recipe] Monogram letters:', monograms);
+      console.log(`[Recipe] ==============================`);
 
       return { elastics, monograms, totalElastics, totalMonograms };
     }
