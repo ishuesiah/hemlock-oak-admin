@@ -111,6 +111,26 @@
     .empty-state { text-align: center; padding: 3rem; color: #999; }
     .empty-state h3 { color: #666; margin-bottom: .5rem; }
 
+    /* Preparation Recipe Card */
+    .recipe-card { display: none; }
+    .recipe-card.show { display: block; }
+    .recipe-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer; user-select: none; }
+    .recipe-header h2 { margin: 0; }
+    .recipe-toggle { font-size: 1.2rem; transition: transform .2s; }
+    .recipe-toggle.collapsed { transform: rotate(-90deg); }
+    .recipe-content { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .recipe-section { background: #f8f9fa; border-radius: 8px; padding: 1.25rem; border: 1px solid #e0e0e0; }
+    .recipe-section h3 { font-size: .95rem; margin-bottom: 1rem; color: #444; display: flex; align-items: center; gap: .5rem; }
+    .recipe-section h3::before { content: '📋'; font-size: 1.1rem; }
+    .recipe-items { display: flex; flex-direction: column; gap: .5rem; }
+    .recipe-item { display: flex; justify-content: space-between; align-items: center; padding: .5rem .75rem; background: #fff; border-radius: 6px; border: 1px solid #e0e0e0; font-size: .85rem; }
+    .recipe-item-name { font-weight: 500; color: #333; }
+    .recipe-item-count { font-weight: 700; color: #667eea; background: #eff6ff; padding: .25rem .6rem; border-radius: 4px; }
+    .recipe-empty { text-align: center; padding: 1.5rem; color: #999; font-size: .85rem; font-style: italic; }
+    .recipe-summary { margin-top: 1rem; padding-top: 1rem; border-top: 2px solid #e0e0e0; font-size: .85rem; color: #666; display: flex; justify-content: space-between; }
+    .recipe-summary-item { font-weight: 600; }
+    .recipe-summary-item span { color: #667eea; font-weight: 700; }
+
     /* Order detail drawer */
     .order-drawer { position: fixed; top: 0; right: -600px; width: 600px; height: 100vh; background: #fff; box-shadow: -4px 0 12px rgba(0,0,0,.15); z-index: 1000; transition: right .3s; overflow-y: auto; }
     .order-drawer.open { right: 0; }
@@ -208,6 +228,33 @@
                 <span>Use default item (Complimentary stickers, 2 qty @ $0.50 each = $1.00 total)</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        <!-- Preparation Recipe -->
+        <div class="card recipe-card" id="recipeCard">
+          <div class="recipe-header" onclick="toggleRecipe()">
+            <h2>📦 Preparation Recipe</h2>
+            <span class="recipe-toggle" id="recipeToggle">▼</span>
+          </div>
+          <div class="recipe-content" id="recipeContent">
+            <div class="recipe-section">
+              <h3>Elastics</h3>
+              <div class="recipe-items" id="elasticsRecipe">
+                <div class="recipe-empty">No elastics to prepare</div>
+              </div>
+            </div>
+            <div class="recipe-section">
+              <h3>Monogram Charms</h3>
+              <div class="recipe-items" id="monogramsRecipe">
+                <div class="recipe-empty">No monogram charms to prepare</div>
+              </div>
+            </div>
+          </div>
+          <div class="recipe-summary" id="recipeSummary" style="display:none">
+            <div class="recipe-summary-item">Total Elastics: <span id="totalElastics">0</span></div>
+            <div class="recipe-summary-item">Total Monograms: <span id="totalMonograms">0</span></div>
+            <div class="recipe-summary-item">Selected Orders: <span id="recipeOrderCount">0</span></div>
           </div>
         </div>
 
@@ -472,6 +519,7 @@
       const count = checkboxes.length;
       document.getElementById('selectedCount').textContent = `${count} selected`;
       document.getElementById('addItemBtn').disabled = count === 0;
+      updateRecipeDisplay(); // Update preparation recipe when selection changes
     }
 
     function selectAll() {
@@ -489,6 +537,143 @@
       const selectAll = document.getElementById('selectAllCheckbox').checked;
       document.querySelectorAll('.order-checkbox').forEach(cb => cb.checked = selectAll);
       updateSelectedCount();
+    }
+
+    // Preparation Recipe Functions
+    function toggleRecipe() {
+      const content = document.getElementById('recipeContent');
+      const summary = document.getElementById('recipeSummary');
+      const toggle = document.getElementById('recipeToggle');
+      const isCollapsed = content.style.display === 'none';
+
+      content.style.display = isCollapsed ? 'grid' : 'none';
+      summary.style.display = isCollapsed ? 'flex' : 'none';
+      toggle.classList.toggle('collapsed', !isCollapsed);
+    }
+
+    function parsePreparationRecipe() {
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      const selectedOrderNumbers = Array.from(checkboxes).map(cb => cb.value);
+
+      if (selectedOrderNumbers.length === 0) {
+        return { elastics: {}, monograms: {}, totalElastics: 0, totalMonograms: 0 };
+      }
+
+      const selectedOrders = allOrders.filter(order => selectedOrderNumbers.includes(order.orderNumber));
+
+      const elastics = {};
+      const monograms = {};
+      let totalElastics = 0;
+      let totalMonograms = 0;
+
+      selectedOrders.forEach(order => {
+        if (!order.items || !Array.isArray(order.items)) return;
+
+        order.items.forEach(item => {
+          const itemName = (item.name || '').toLowerCase();
+          const itemSku = (item.sku || '').toLowerCase();
+          const quantity = item.quantity || 1;
+
+          // Check if this is an elastic item
+          // Looking for items with "elastic" in name or SKU
+          if (itemName.includes('elastic') || itemSku.includes('elastic')) {
+            // Try to extract variant from item options or use name
+            let variant = 'Unknown Elastic';
+
+            // Check item options for variant/color/style
+            if (item.options && Array.isArray(item.options)) {
+              const variantOption = item.options.find(opt =>
+                (opt.name || '').toLowerCase().match(/variant|color|style|type/)
+              );
+              if (variantOption && variantOption.value) {
+                variant = variantOption.value;
+              }
+            }
+
+            // If no variant found in options, try to extract from item name
+            if (variant === 'Unknown Elastic' && item.name) {
+              // Remove "elastic" from the name to get variant
+              variant = item.name.replace(/elastic/gi, '').trim() || 'Standard Elastic';
+            }
+
+            elastics[variant] = (elastics[variant] || 0) + quantity;
+            totalElastics += quantity;
+          }
+
+          // Check if this is a monogram charm item
+          // Looking for items with "monogram" or "charm" in name/SKU, or items with monogram options
+          const isMonogramItem = itemName.includes('monogram') ||
+                                 itemName.includes('charm') ||
+                                 itemSku.includes('monogram') ||
+                                 itemSku.includes('charm');
+
+          if (isMonogramItem && item.options && Array.isArray(item.options)) {
+            // Look for monogram letter in options
+            const monogramOption = item.options.find(opt =>
+              (opt.name || '').toLowerCase().match(/monogram|letter|initial|personalization/)
+            );
+
+            if (monogramOption && monogramOption.value) {
+              const letter = monogramOption.value.trim().toUpperCase();
+              // Only count if it's a single letter A-Z
+              if (letter.length > 0 && letter.match(/^[A-Z]+$/)) {
+                monograms[letter] = (monograms[letter] || 0) + quantity;
+                totalMonograms += quantity;
+              }
+            }
+          }
+        });
+      });
+
+      return { elastics, monograms, totalElastics, totalMonograms };
+    }
+
+    function updateRecipeDisplay() {
+      const recipe = parsePreparationRecipe();
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      const selectedCount = checkboxes.length;
+
+      // Show/hide recipe card
+      const recipeCard = document.getElementById('recipeCard');
+      if (selectedCount > 0) {
+        recipeCard.classList.add('show');
+      } else {
+        recipeCard.classList.remove('show');
+        return;
+      }
+
+      // Update elastics
+      const elasticsContainer = document.getElementById('elasticsRecipe');
+      if (Object.keys(recipe.elastics).length > 0) {
+        const elasticsSorted = Object.entries(recipe.elastics).sort((a, b) => b[1] - a[1]);
+        elasticsContainer.innerHTML = elasticsSorted.map(([variant, count]) => `
+          <div class="recipe-item">
+            <span class="recipe-item-name">${variant}</span>
+            <span class="recipe-item-count">×${count}</span>
+          </div>
+        `).join('');
+      } else {
+        elasticsContainer.innerHTML = '<div class="recipe-empty">No elastics to prepare</div>';
+      }
+
+      // Update monograms
+      const monogramsContainer = document.getElementById('monogramsRecipe');
+      if (Object.keys(recipe.monograms).length > 0) {
+        const monogramsSorted = Object.entries(recipe.monograms).sort((a, b) => a[0].localeCompare(b[0]));
+        monogramsContainer.innerHTML = monogramsSorted.map(([letter, count]) => `
+          <div class="recipe-item">
+            <span class="recipe-item-name">Letter ${letter}</span>
+            <span class="recipe-item-count">×${count}</span>
+          </div>
+        `).join('');
+      } else {
+        monogramsContainer.innerHTML = '<div class="recipe-empty">No monogram charms to prepare</div>';
+      }
+
+      // Update summary
+      document.getElementById('totalElastics').textContent = recipe.totalElastics;
+      document.getElementById('totalMonograms').textContent = recipe.totalMonograms;
+      document.getElementById('recipeOrderCount').textContent = selectedCount;
     }
 
     // Add items to selected orders
