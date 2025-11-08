@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Change Detector - Hemlock & Oak</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7fb; color: #333; }
+    
+    /* Layout with sidebar */
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { background: #111827; color: #fff; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+    .nav-title { font-weight: 700; opacity: .9; margin-bottom: .5rem; }
+    .nav-link { display: block; color: #c7cbe1; text-decoration: none; padding: .5rem .6rem; border-radius: 6px; }
+    .nav-link:hover { background: #1f2937; color: #fff; }
+    .nav-link.active { background: #4f46e5; color: #fff; }
+    
+    /* Main content area */
+    .main-content { display: flex; flex-direction: column; }
+    
+    /* Header */
+    .header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .header h1 { font-size: 1.5rem; background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    /* Controls */
+    .controls { background: #fff; padding: 1.5rem 2rem; border-bottom: 1px solid #e0e0e0; }
+    .control-row { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    .control-row:last-child { margin-bottom: 0; }
+    
+    label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; color: #666; }
+    input[type="number"] { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; width: 100px; }
+    
+    /* Buttons */
+    .btn { padding: .5rem 1rem; border-radius: 6px; border: none; font-size: .9rem; cursor: pointer; transition: all .2s; font-weight: 500; }
+    .btn-primary { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); color: #fff; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,158,11,.3); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: #fff; color: #666; border: 1px solid #e0e0e0; }
+    .btn-secondary:hover { background: #f5f5f5; }
+    .btn-success { background: #10b981; color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: #f59e0b; color: #fff; }
+    .btn-warning:hover { background: #d97706; }
+    
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e0e0e0; }
+    .stat-card { background: #f8f9fa; padding: 1rem; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .stat-label { font-size: .8rem; color: #666; text-transform: uppercase; letter-spacing: .5px; margin-bottom: .5rem; }
+    .stat-value { font-size: 1.8rem; font-weight: 600; color: #333; }
+    
+    /* Status bar */
+    .status-bar { padding: 1rem 2rem; display: none; align-items: center; gap: 1rem; border-bottom: 1px solid #e0e0e0; }
+    .status-bar.active { display: flex; }
+    .status-bar.error { background: #fee; color: #c33; }
+    .status-bar.success { background: #efe; color: #3c3; }
+    .status-bar.info { background: #e0f2fe; color: #0369a1; }
+    .status-bar.warning { background: #fef3c7; color: #d97706; }
+    
+    /* Progress bar */
+    .progress-container { padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e0e0e0; display: none; }
+    .progress-container.active { display: block; }
+    .progress-bar { width: 100%; height: 30px; background: #e0e0e0; border-radius: 6px; overflow: hidden; position: relative; }
+    .progress-fill { height: 100%; background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%); transition: width .3s; }
+    .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #333; font-weight: 600; font-size: .85rem; }
+    
+    /* Table */
+    .table-container { background: #fff; margin: 1rem; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; }
+    th { padding: 1rem; text-align: left; font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #666; }
+    td { padding: .75rem 1rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+    tbody tr:hover { background: #f8f9fa; }
+    
+    /* Checkbox */
+    input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    
+    /* Badge */
+    .badge { display: inline-block; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; font-weight: 600; margin: .2rem; }
+    .badge-removed { background: #fee2e2; color: #dc2626; }
+    .badge-added { background: #dbeafe; color: #2563eb; }
+    .badge-quantity { background: #fef3c7; color: #d97706; }
+    .badge-tagged { background: #dcfce7; color: #16a34a; }
+    
+    /* Change details */
+    .change-details { background: #f8f9fa; padding: .5rem; border-radius: 4px; font-size: .85rem; margin-top: .3rem; }
+    .change-item { padding: .3rem 0; }
+    
+    /* Loading */
+    .loading { display: none; text-align: center; padding: 3rem; }
+    .loading.active { display: block; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #f59e0b; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    /* Empty state */
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #666; }
+    .empty-state h3 { color: #333; margin-bottom: .5rem; }
+    
+    /* Action buttons in table */
+    .action-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .btn-small { padding: .3rem .6rem; font-size: .8rem; }
+    
+    /* Info box */
+    .info-box { background: #e0f2fe; border: 1px solid #7dd3fc; border-radius: 6px; padding: 1rem; margin: 1rem 2rem; font-size: .9rem; color: #0369a1; }
+    .info-box strong { color: #075985; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="nav-title">Hemlock & Oak</div>
+      <a class="nav-link" href="/">Product Manager</a>
+      <a class="nav-link" href="/shipstation">ShipStation Customs</a>
+      <a class="nav-link" href="/vip-customers">VIP Customers</a>
+      <a class="nav-link" href="/order-formatter">Order Formatter</a>
+      <a class="nav-link active" href="/order-change-detector">Order Changes</a>
+      <div style="margin-top:auto"></div>
+      <a class="nav-link" href="/logout">Logout</a>
+    </aside>
+
+    <!-- Main content -->
+    <div class="main-content">
+      <!-- Header -->
+      <div class="header">
+        <h1>âš ï¸ Order Change Detector</h1>
+      </div>
+
+      <!-- Info Box -->
+      <div class="info-box">
+        <strong>What this tool does:</strong> Compares ShipStation orders with Shopify to detect if items were added, removed, or quantities changed. Orders with changes will be tagged with "ORDER CHANGE" in ShipStation.
+        <br><br>
+        <strong>Note:</strong> Make sure the "ORDER CHANGE" tag exists in your ShipStation account before running bulk tagging.
+      </div>
+
+      <!-- Background Job Status -->
+      <div class="info-box" id="jobStatusBox" style="background: #f0fdf4; border-color: #86efac;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong style="color: #166534;">🤖 Background Job:</strong>
+            <span id="jobStatus">Loading...</span>
+          </div>
+          <button class="btn btn-secondary btn-small" onclick="refreshJobStatus()">🔄 Refresh</button>
+        </div>
+        <div id="jobDetails" style="margin-top: 0.5rem; font-size: 0.85rem; color: #166534;"></div>
+      </div>
+
+      <!-- Status Bar -->
+      <div id="statusBar" class="status-bar">
+        <span id="statusMessage"></span>
+      </div>
+
+      <!-- Progress Bar -->
+      <div id="progressContainer" class="progress-container">
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+          <div id="progressText" class="progress-text">0%</div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats" id="statsContainer" style="display: none;">
+        <div class="stat-card">
+          <div class="stat-label">Orders Scanned</div>
+          <div class="stat-value" id="totalScanned">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">With Changes</div>
+          <div class="stat-value" id="totalWithChanges">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Already Tagged</div>
+          <div class="stat-value" id="totalAlreadyTagged">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ready to Tag</div>
+          <div class="stat-value" id="totalReady">0</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <div class="control-row">
+          <label>
+            Scan last
+            <input type="number" id="daysInput" value="30" min="1" max="365">
+            days
+          </label>
+          <label>
+            Max orders
+            <input type="number" id="maxOrdersInput" value="200" min="10" max="500">
+          </label>
+          <button id="scanBtn" class="btn btn-primary" onclick="scanOrders()">ðŸ" Scan for Order Changes</button>
+        </div>
+        <div class="control-row" id="bulkActions" style="display: none;">
+          <button id="selectAllBtn" class="btn btn-secondary" onclick="selectAll()">âœ" Select All</button>
+          <button id="selectUntaggedBtn" class="btn btn-secondary" onclick="selectUntagged()">ðŸ· Select Untagged</button>
+          <button id="deselectAllBtn" class="btn btn-secondary" onclick="deselectAll()">âœ— Deselect All</button>
+          <button id="bulkTagBtn" class="btn btn-warning" onclick="bulkTag()">ðŸ·ï¸ Tag Selected Orders</button>
+          <span style="margin-left: auto; color: #666; font-size: .9rem;">
+            <span id="selectedCount">0</span> orders selected
+          </span>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem;">Scanning orders and comparing with Shopify...</p>
+      </div>
+
+      <!-- Results Table -->
+      <div class="table-container" id="resultsTable" style="display: none;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Change Count</th>
+              <th>Changes Detected</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="resultsTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state">
+        <h3>No Order Changes Found</h3>
+        <p>Click "Scan for Order Changes" to compare ShipStation orders with Shopify.</p>
+        <p style="margin-top: 1rem;">Orders with added/removed items or quantity changes will appear here.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript -->
+  <script>
+    let scannedOrders = [];
+    let selectedOrders = new Set();
+
+    // Fetch and display job status on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshJobStatus();
+      // Auto-refresh every 30 seconds
+      setInterval(refreshJobStatus, 30000);
+    });
+
+    // Refresh job status
+    async function refreshJobStatus() {
+      try {
+        const response = await fetch('/api/order-change-detector/job-status');
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        const stats = data.stats;
+        const jobStatusEl = document.getElementById('jobStatus');
+        const jobDetailsEl = document.getElementById('jobDetails');
+        
+        // Update status
+        if (!stats.config.enabled) {
+          jobStatusEl.innerHTML = '<strong style="color: #dc2626;">DISABLED</strong>';
+          jobDetailsEl.innerHTML = 'Background job is disabled. Enable it in .env to run automatic checks.';
+          return;
+        }
+        
+        if (stats.isRunning) {
+          jobStatusEl.innerHTML = '<strong style="color: #2563eb;">RUNNING</strong> 🔄';
+        } else {
+          jobStatusEl.innerHTML = '<strong style="color: #16a34a;">ENABLED</strong> ✅';
+        }
+        
+        // Update details
+        const lastRun = stats.lastRunDate ? new Date(stats.lastRunDate).toLocaleString() : 'Never';
+        const nextRun = stats.nextRunTime ? new Date(stats.nextRunTime).toLocaleString() : 'Unknown';
+        const duration = stats.lastRunDuration ? Math.round(stats.lastRunDuration / 1000) + 's' : 'N/A';
+        
+        jobDetailsEl.innerHTML = `
+          <strong>Last run:</strong> ${lastRun} (${duration}) | 
+          <strong>Next run:</strong> ${nextRun} | 
+          <strong>Interval:</strong> ${stats.config.intervalMinutes} min | 
+          <strong>Scan window:</strong> ${stats.config.hoursToScan}h | 
+          <strong>Auto-tag:</strong> ${stats.config.autoTag ? 'ON' : 'OFF'}
+          <br>
+          <strong>Lifetime stats:</strong> ${stats.totalRuns} runs, ${stats.ordersScanned} scanned, ${stats.changesDetected} changes, ${stats.ordersTagged} tagged
+        `;
+        
+      } catch (error) {
+        console.error('Failed to fetch job status:', error);
+        document.getElementById('jobStatus').innerHTML = '<strong style="color: #dc2626;">ERROR</strong>';
+        document.getElementById('jobDetails').innerHTML = 'Failed to fetch job status: ' + error.message;
+      }
+    }
+
+    // Show status message
+    function showStatus(message, type = 'info') {
+      const statusBar = document.getElementById('statusBar');
+      const statusMessage = document.getElementById('statusMessage');
+      statusBar.className = `status-bar active ${type}`;
+      statusMessage.textContent = message;
+      
+      if (type === 'success' || type === 'info') {
+        setTimeout(() => { statusBar.className = 'status-bar'; }, 5000);
+      }
+    }
+
+    // Update progress bar
+    function updateProgress(current, total) {
+      const progressContainer = document.getElementById('progressContainer');
+      const progressFill = document.getElementById('progressFill');
+      const progressText = document.getElementById('progressText');
+      
+      if (total === 0) {
+        progressContainer.classList.remove('active');
+        return;
+      }
+      
+      const percent = Math.round((current / total) * 100);
+      progressContainer.classList.add('active');
+      progressFill.style.width = percent + '%';
+      progressText.textContent = `${current} / ${total} (${percent}%)`;
+    }
+
+    // Scan for orders with changes
+    async function scanOrders() {
+      const days = document.getElementById('daysInput').value;
+      const maxOrders = document.getElementById('maxOrdersInput').value;
+      const scanBtn = document.getElementById('scanBtn');
+      const loading = document.getElementById('loading');
+      const emptyState = document.getElementById('emptyState');
+      const resultsTable = document.getElementById('resultsTable');
+      const bulkActions = document.getElementById('bulkActions');
+      const statsContainer = document.getElementById('statsContainer');
+      
+      scanBtn.disabled = true;
+      loading.classList.add('active');
+      emptyState.style.display = 'none';
+      resultsTable.style.display = 'none';
+      bulkActions.style.display = 'none';
+      statsContainer.style.display = 'none';
+      
+      try {
+        const response = await fetch(`/api/order-change-detector/scan?days=${days}&maxOrders=${maxOrders}`);
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        scannedOrders = data.orders || [];
+        selectedOrders.clear();
+        
+        // Update stats
+        document.getElementById('totalScanned').textContent = data.totalScanned || 0;
+        document.getElementById('totalWithChanges').textContent = data.ordersWithChanges || 0;
+        document.getElementById('totalAlreadyTagged').textContent = data.ordersAlreadyTagged || 0;
+        document.getElementById('totalReady').textContent = scannedOrders.filter(o => !o.hasOrderChangeTag).length;
+        
+        if (scannedOrders.length > 0) {
+          renderResults();
+          resultsTable.style.display = 'block';
+          bulkActions.style.display = 'flex';
+          statsContainer.style.display = 'grid';
+          
+          const untaggedCount = scannedOrders.filter(o => !o.hasOrderChangeTag).length;
+          showStatus(`Found ${scannedOrders.length} orders with changes (${untaggedCount} not yet tagged)`, 'success');
+        } else {
+          emptyState.style.display = 'block';
+          statsContainer.style.display = 'grid';
+          showStatus('No order changes detected - all orders match between Shopify and ShipStation', 'success');
+        }
+        
+      } catch (error) {
+        showStatus('Scan failed: ' + error.message, 'error');
+      } finally {
+        loading.classList.remove('active');
+        scanBtn.disabled = false;
+      }
+    }
+
+    // Render results table
+    function renderResults() {
+      const tbody = document.getElementById('resultsTableBody');
+      tbody.innerHTML = '';
+      
+      scannedOrders.forEach(order => {
+        const row = tbody.insertRow();
+        
+        // Checkbox
+        const checkCell = row.insertCell();
+        checkCell.innerHTML = `<input type="checkbox" class="order-checkbox" data-order-id="${order.orderId}" onchange="updateSelectedCount()">`;
+        
+        // Order info
+        const orderCell = row.insertCell();
+        orderCell.innerHTML = `
+          <div><strong>#${order.orderNumber}</strong></div>
+          <div style="font-size:.8rem;color:#666;">${order.orderKey}</div>
+          <div style="font-size:.75rem;color:#999;">${new Date(order.orderDate).toLocaleDateString()}</div>
+        `;
+        
+        // Customer
+        const customerCell = row.insertCell();
+        customerCell.innerHTML = `
+          <div>${order.customerName}</div>
+          <div style="font-size:.8rem;color:#666;">${order.customerEmail || ''}</div>
+        `;
+        
+        // Change count
+        const countCell = row.insertCell();
+        countCell.innerHTML = `<strong>${order.changeCount}</strong> change${order.changeCount !== 1 ? 's' : ''}`;
+        
+        // Changes details
+        const changesCell = row.insertCell();
+        let changesHTML = '<div class="change-details">';
+        order.changes.forEach(change => {
+          let badgeClass = '';
+          if (change.type === 'removed') badgeClass = 'badge-removed';
+          else if (change.type === 'added') badgeClass = 'badge-added';
+          else if (change.type === 'quantity_changed') badgeClass = 'badge-quantity';
+          
+          changesHTML += `
+            <div class="change-item">
+              <span class="badge ${badgeClass}">${change.type.toUpperCase().replace('_', ' ')}</span>
+              ${escapeHtml(change.description)}
+            </div>
+          `;
+        });
+        changesHTML += '</div>';
+        changesCell.innerHTML = changesHTML;
+        
+        // Tag status
+        const statusCell = row.insertCell();
+        if (order.hasOrderChangeTag) {
+          statusCell.innerHTML = '<span class="badge badge-tagged">TAGGED</span>';
+        } else {
+          statusCell.innerHTML = '<span style="color:#666;">Not tagged</span>';
+        }
+        
+        // Actions
+        const actionsCell = row.insertCell();
+        actionsCell.innerHTML = `
+          <div class="action-buttons">
+            <button class="btn btn-warning btn-small" onclick="tagSingleOrder('${order.orderId}')" ${order.hasOrderChangeTag ? 'disabled' : ''}>
+              ðŸ·ï¸ Tag
+            </button>
+          </div>
+        `;
+      });
+      
+      updateSelectedCount();
+    }
+
+    // Helper to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Toggle select all
+    function toggleSelectAll() {
+      const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+      const checkboxes = document.querySelectorAll('.order-checkbox');
+      checkboxes.forEach(cb => { cb.checked = selectAllCheckbox.checked; });
+      updateSelectedCount();
+    }
+
+    // Select/deselect all buttons
+    function selectAll() {
+      document.getElementById('selectAllCheckbox').checked = true;
+      toggleSelectAll();
+    }
+
+    function deselectAll() {
+      document.getElementById('selectAllCheckbox').checked = false;
+      toggleSelectAll();
+    }
+
+    // Select only untagged orders
+    function selectUntagged() {
+      const checkboxes = document.querySelectorAll('.order-checkbox');
+      checkboxes.forEach(cb => { cb.checked = false; });
+      
+      scannedOrders.forEach(order => {
+        if (!order.hasOrderChangeTag) {
+          const checkbox = document.querySelector(`.order-checkbox[data-order-id="${order.orderId}"]`);
+          if (checkbox) checkbox.checked = true;
+        }
+      });
+      
+      updateSelectedCount();
+    }
+
+    // Update selected count
+    function updateSelectedCount() {
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      selectedOrders.clear();
+      checkboxes.forEach(cb => selectedOrders.add(cb.dataset.orderId));
+      document.getElementById('selectedCount').textContent = selectedOrders.size;
+    }
+
+    // Tag single order
+    async function tagSingleOrder(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order) return;
+      
+      try {
+        const response = await fetch('/api/order-change-detector/tag-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: order.orderId })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        showStatus(`Tagged order #${order.orderNumber} with ORDER CHANGE`, 'success');
+        
+        // Update order status in UI
+        order.hasOrderChangeTag = true;
+        renderResults();
+        
+      } catch (error) {
+        showStatus('Tag failed: ' + error.message, 'error');
+      }
+    }
+
+    // Bulk tag
+    async function bulkTag() {
+      if (selectedOrders.size === 0) {
+        showStatus('Please select at least one order', 'warning');
+        return;
+      }
+      
+      const untaggedCount = Array.from(selectedOrders).filter(id => {
+        const order = scannedOrders.find(o => String(o.orderId) === String(id));
+        return order && !order.hasOrderChangeTag;
+      }).length;
+      
+      if (untaggedCount === 0) {
+        showStatus('All selected orders are already tagged', 'info');
+        return;
+      }
+      
+      if (!confirm(`Tag ${untaggedCount} orders with "ORDER CHANGE"?`)) return;
+      
+      const bulkTagBtn = document.getElementById('bulkTagBtn');
+      bulkTagBtn.disabled = true;
+      
+      try {
+        updateProgress(0, selectedOrders.size);
+        showStatus(`Tagging ${selectedOrders.size} orders...`, 'info');
+        
+        const response = await fetch('/api/order-change-detector/bulk-tag', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderIds: Array.from(selectedOrders)
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        const results = data.results;
+        
+        let statusMessage = `Bulk tag complete! âœ… ${results.success} tagged`;
+        if (results.skipped > 0) {
+          statusMessage += `, âž¡ï¸ ${results.skipped} already tagged`;
+        }
+        if (results.failed > 0) {
+          statusMessage += `, âŒ ${results.failed} failed`;
+        }
+        
+        showStatus(statusMessage, results.failed > 0 ? 'warning' : 'success');
+        
+        // Refresh the scan to update tag status
+        setTimeout(() => scanOrders(), 2000);
+        
+      } catch (error) {
+        showStatus('Bulk tag failed: ' + error.message, 'error');
+      } finally {
+        bulkTagBtn.disabled = false;
+        setTimeout(() => updateProgress(0, 0), 3000);
+      }
+    }
+  </script>
+</body>
+</html>

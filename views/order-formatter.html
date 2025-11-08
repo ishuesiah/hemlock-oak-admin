@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order Formatter - Hemlock & Oak</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7fb; color: #333; }
+    
+    /* Layout with sidebar */
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { background: #111827; color: #fff; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+    .nav-title { font-weight: 700; opacity: .9; margin-bottom: .5rem; }
+    .nav-link { display: block; color: #c7cbe1; text-decoration: none; padding: .5rem .6rem; border-radius: 6px; }
+    .nav-link:hover { background: #1f2937; color: #fff; }
+    .nav-link.active { background: #4f46e5; color: #fff; }
+    
+    /* Main content area */
+    .main-content { display: flex; flex-direction: column; }
+    
+    /* Header */
+    .header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+    .header h1 { font-size: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    
+    /* Controls */
+    .controls { background: #fff; padding: 1.5rem 2rem; border-bottom: 1px solid #e0e0e0; }
+    .control-row { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+    .control-row:last-child { margin-bottom: 0; }
+    
+    label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; color: #666; }
+    input[type="number"] { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; width: 100px; }
+    
+    /* Buttons */
+    .btn { padding: .5rem 1rem; border-radius: 6px; border: none; font-size: .9rem; cursor: pointer; transition: all .2s; font-weight: 500; }
+    .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102,126,234,.3); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-secondary { background: #fff; color: #666; border: 1px solid #e0e0e0; }
+    .btn-secondary:hover { background: #f5f5f5; }
+    .btn-success { background: #10b981; color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-warning { background: #f59e0b; color: #fff; }
+    .btn-warning:hover { background: #d97706; }
+    
+    /* Stats */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e0e0e0; }
+    .stat-card { background: #f8f9fa; padding: 1rem; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .stat-label { font-size: .8rem; color: #666; text-transform: uppercase; letter-spacing: .5px; margin-bottom: .5rem; }
+    .stat-value { font-size: 1.8rem; font-weight: 600; color: #333; }
+    
+    /* Status bar */
+    .status-bar { padding: 1rem 2rem; display: none; align-items: center; gap: 1rem; border-bottom: 1px solid #e0e0e0; }
+    .status-bar.active { display: flex; }
+    .status-bar.error { background: #fee; color: #c33; }
+    .status-bar.success { background: #efe; color: #3c3; }
+    .status-bar.info { background: #e0f2fe; color: #0369a1; }
+    .status-bar.warning { background: #fef3c7; color: #d97706; }
+    
+    /* Progress bar */
+    .progress-container { padding: 1rem 2rem; background: #fff; border-bottom: 1px solid #e0e0e0; display: none; }
+    .progress-container.active { display: block; }
+    .progress-bar { width: 100%; height: 30px; background: #e0e0e0; border-radius: 6px; overflow: hidden; position: relative; }
+    .progress-fill { height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width .3s; }
+    .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #333; font-weight: 600; font-size: .85rem; }
+    
+    /* Table */
+    .table-container { background: #fff; margin: 1rem; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
+    table { width: 100%; border-collapse: collapse; }
+    thead { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; }
+    th { padding: 1rem; text-align: left; font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #666; }
+    td { padding: .75rem 1rem; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+    tbody tr:hover { background: #f8f9fa; }
+    
+    /* Checkbox */
+    input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    
+    /* Badge */
+    .badge { display: inline-block; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; font-weight: 600; }
+    .badge-charm { background: #fce7f3; color: #be185d; }
+    .badge-customization { background: #dbeafe; color: #1e40af; }
+    
+    /* NEW: Shopify note indicator */
+    .note-indicator { display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; background: #dcfce7; color: #166534; font-weight: 600; }
+    .note-indicator::before { content: '📝'; }
+    
+    /* Preview box */
+    .preview-box { background: #f8f9fa; padding: .75rem; border-radius: 4px; font-family: 'SF Mono', Monaco, monospace; font-size: .8rem; white-space: pre-wrap; max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; }
+    
+    /* Loading */
+    .loading { display: none; text-align: center; padding: 3rem; }
+    .loading.active { display: block; }
+    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    /* Empty state */
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #666; }
+    .empty-state h3 { color: #333; margin-bottom: .5rem; }
+    
+    /* Action buttons in table */
+    .action-buttons { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .btn-small { padding: .3rem .6rem; font-size: .8rem; }
+    
+    /* Order info with note indicator */
+    .order-info-cell { display: flex; flex-direction: column; gap: .3rem; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="nav-title">Hemlock & Oak</div>
+      <a class="nav-link" href="/">Product Manager</a>
+      <a class="nav-link" href="/shipstation">ShipStation Customs</a>
+      <a class="nav-link" href="/vip-customers">VIP Customers</a>
+      <a class="nav-link active" href="/order-formatter">Order Formatter</a>
+      <div style="margin-top:auto"></div>
+      <a class="nav-link" href="/logout">Logout</a>
+    </aside>
+
+    <!-- Main content -->
+    <div class="main-content">
+      <!-- Header -->
+      <div class="header">
+        <h1>📋 Order Formatter</h1>
+      </div>
+
+      <!-- Status Bar -->
+      <div id="statusBar" class="status-bar">
+        <span id="statusMessage"></span>
+      </div>
+
+      <!-- Progress Bar -->
+      <div id="progressContainer" class="progress-container">
+        <div class="progress-bar">
+          <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+          <div id="progressText" class="progress-text">0%</div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats" id="statsContainer" style="display: none;">
+        <div class="stat-card">
+          <div class="stat-label">Orders Scanned</div>
+          <div class="stat-value" id="totalScanned">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Orders with Customizations</div>
+          <div class="stat-value" id="totalFound">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">With Shopify Notes</div>
+          <div class="stat-value" id="totalWithNotes">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ready to Process</div>
+          <div class="stat-value" id="totalReady">0</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <div class="control-row">
+          <label>
+            Scan last
+            <input type="number" id="daysInput" value="30" min="1" max="365">
+            days
+          </label>
+          <label>
+            Max orders
+            <input type="number" id="maxOrdersInput" value="500" min="10" max="5000">
+          </label>
+          <button id="scanBtn" class="btn btn-primary" onclick="scanOrders()">🔍 Scan for Customizations</button>
+        </div>
+        <div class="control-row" id="bulkActions" style="display: none;">
+          <button id="selectAllBtn" class="btn btn-secondary" onclick="selectAll()">✓ Select All</button>
+          <button id="selectWithNotesBtn" class="btn btn-secondary" onclick="selectOrdersWithNotes()" title="Select only orders with Shopify notes">📋 Select Orders with Notes</button>
+          <button id="deselectAllBtn" class="btn btn-secondary" onclick="deselectAll()">✗ Deselect All</button>
+          <button id="bulkTagBtn" class="btn btn-success" onclick="bulkTag()">🏷️ Tag Selected Orders</button>
+          <button id="bulkFormatBtn" class="btn btn-warning" onclick="bulkFormat()">📝 Format Selected to Gift Note</button>
+          <button id="bulkFillSKUsBtn" class="btn btn-primary" onclick="bulkFillSKUs()" title="Appends SKU to description field (ShipStation limitation)">🔧 Fill Customs SKUs</button>
+          <span style="margin-left: auto; color: #666; font-size: .9rem;">
+            <span id="selectedCount">0</span> orders selected
+          </span>
+        </div>
+        <div style="padding: .5rem 0; font-size: .85rem; color: #666;">
+          <strong>Note:</strong> When formatting, Shopify notes will be synced to ShipStation Internal Notes field. Customizations go to Gift Message.
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem;">Scanning orders and fetching Shopify notes...</p>
+      </div>
+
+      <!-- Results Table -->
+      <div class="table-container" id="resultsTable" style="display: none;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px;"><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+              <th>Order</th>
+              <th>Customer</th>
+              <th>Items</th>
+              <th>Tag</th>
+              <th>Preview</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="resultsTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state">
+        <h3>No Orders Found</h3>
+        <p>Click "Scan for Customizations" to find orders that need formatting.</p>
+        <p style="margin-top: 1rem;">Orders with stringified properties or custom options will appear here.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript -->
+  <script>
+    let scannedOrders = [];
+    let selectedOrders = new Set();
+    let shopifyConfigured = false; // Track if Shopify API is available
+
+    // Show status message
+    function showStatus(message, type = 'info') {
+      const statusBar = document.getElementById('statusBar');
+      const statusMessage = document.getElementById('statusMessage');
+      statusBar.className = `status-bar active ${type}`;
+      statusMessage.textContent = message;
+      
+      if (type === 'success' || type === 'info') {
+        setTimeout(() => { statusBar.className = 'status-bar'; }, 5000);
+      }
+    }
+
+    // Update progress bar
+    function updateProgress(current, total) {
+      const progressContainer = document.getElementById('progressContainer');
+      const progressFill = document.getElementById('progressFill');
+      const progressText = document.getElementById('progressText');
+      
+      if (total === 0) {
+        progressContainer.classList.remove('active');
+        return;
+      }
+      
+      const percent = Math.round((current / total) * 100);
+      progressContainer.classList.add('active');
+      progressFill.style.width = percent + '%';
+      progressText.textContent = `${current} / ${total} (${percent}%)`;
+    }
+
+    // Scan for orders with customizations
+    async function scanOrders() {
+      const days = document.getElementById('daysInput').value;
+      const maxOrders = document.getElementById('maxOrdersInput').value;
+      const scanBtn = document.getElementById('scanBtn');
+      const loading = document.getElementById('loading');
+      const emptyState = document.getElementById('emptyState');
+      const resultsTable = document.getElementById('resultsTable');
+      const bulkActions = document.getElementById('bulkActions');
+      const statsContainer = document.getElementById('statsContainer');
+      
+      scanBtn.disabled = true;
+      loading.classList.add('active');
+      emptyState.style.display = 'none';
+      resultsTable.style.display = 'none';
+      bulkActions.style.display = 'none';
+      statsContainer.style.display = 'none';
+      
+      try {
+        const response = await fetch(`/api/order-formatter/scan?days=${days}&maxOrders=${maxOrders}`);
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        scannedOrders = data.orders || [];
+        selectedOrders.clear();
+        shopifyConfigured = data.shopifyConfigured || false; // Track Shopify availability
+        
+        // Update stats
+        document.getElementById('totalScanned').textContent = data.totalScanned || 0;
+        document.getElementById('totalFound').textContent = data.foundWithCustomizations || 0;
+        
+        // NEW: Count orders with Shopify notes
+        const ordersWithNotes = scannedOrders.filter(o => o.shopifyNote && o.shopifyNote.trim() !== '').length;
+        document.getElementById('totalWithNotes').textContent = ordersWithNotes;
+        
+        document.getElementById('totalReady').textContent = scannedOrders.length;
+        
+        if (scannedOrders.length > 0) {
+          renderResults();
+          resultsTable.style.display = 'block';
+          bulkActions.style.display = 'flex';
+          statsContainer.style.display = 'grid';
+          
+          let statusMsg = `Found ${scannedOrders.length} orders with customizations`;
+          if (ordersWithNotes > 0) {
+            statusMsg += ` (${ordersWithNotes} with Shopify notes)`;
+          }
+          if (!shopifyConfigured) {
+            statusMsg += ' ⚠️ Shopify API not configured';
+          }
+          showStatus(statusMsg, 'success');
+        } else {
+          emptyState.style.display = 'block';
+          showStatus('No orders with customizations found', 'info');
+        }
+        
+      } catch (error) {
+        showStatus('Scan failed: ' + error.message, 'error');
+      } finally {
+        loading.classList.remove('active');
+        scanBtn.disabled = false;
+      }
+    }
+
+    // Render results table
+    function renderResults() {
+      const tbody = document.getElementById('resultsTableBody');
+      tbody.innerHTML = '';
+      
+      scannedOrders.forEach(order => {
+        const row = tbody.insertRow();
+        
+        // Checkbox
+        const checkCell = row.insertCell();
+        checkCell.innerHTML = `<input type="checkbox" class="order-checkbox" data-order-id="${order.orderId}" onchange="updateSelectedCount()">`;
+        
+        // Order info WITH SHOPIFY NOTE INDICATOR
+        const orderCell = row.insertCell();
+        const hasNote = order.shopifyNote && order.shopifyNote.trim() !== '';
+        orderCell.innerHTML = `
+          <div class="order-info-cell">
+            <div><strong>#${order.orderNumber}</strong></div>
+            <div style="font-size:.8rem;color:#666;">${order.orderKey}</div>
+            <div style="font-size:.75rem;color:#999;">${new Date(order.orderDate).toLocaleDateString()}</div>
+            ${hasNote ? '<div class="note-indicator" title="Has Shopify note">Shopify Note</div>' : ''}
+          </div>
+        `;
+        
+        // Customer
+        const customerCell = row.insertCell();
+        customerCell.innerHTML = `
+          <div>${order.customerName}</div>
+          <div style="font-size:.8rem;color:#666;">${order.customerEmail || ''}</div>
+        `;
+        
+        // Items
+        const itemsCell = row.insertCell();
+        itemsCell.textContent = order.itemCount;
+        
+        // Tag
+        const tagCell = row.insertCell();
+        const tagClass = order.suggestedTag === 'Charm' ? 'badge-charm' : 'badge-customization';
+        tagCell.innerHTML = `<span class="badge ${tagClass}">${order.suggestedTag}</span>`;
+        
+        // Preview
+        const previewCell = row.insertCell();
+        const previewText = order.formattedText.substring(0, 150) + (order.formattedText.length > 150 ? '...' : '');
+        previewCell.innerHTML = `<div class="preview-box">${escapeHtml(previewText)}</div>`;
+        
+        // Actions
+        const actionsCell = row.insertCell();
+        actionsCell.innerHTML = `
+          <div class="action-buttons">
+            <button class="btn btn-secondary btn-small" onclick="viewFullPreview('${order.orderId}')">👁️ Preview</button>
+            ${hasNote ? `<button class="btn btn-secondary btn-small" onclick="viewShopifyNote('${order.orderId}')" title="View Shopify note">📝 Note</button>` : ''}
+            <button class="btn btn-success btn-small" onclick="tagSingleOrder('${order.orderId}')">🏷️ Tag</button>
+            <button class="btn btn-warning btn-small" onclick="formatSingleOrder('${order.orderId}')">📝 Format</button>
+            <button class="btn btn-primary btn-small" onclick="fillSingleOrderSKUs('${order.orderId}')">🔧 SKUs</button>
+          </div>
+        `;
+      });
+      
+      updateSelectedCount();
+    }
+
+    // Helper to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Toggle select all
+    function toggleSelectAll() {
+      const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+      const checkboxes = document.querySelectorAll('.order-checkbox');
+      checkboxes.forEach(cb => { cb.checked = selectAllCheckbox.checked; });
+      updateSelectedCount();
+    }
+
+    // Select/deselect all buttons
+    function selectAll() {
+      document.getElementById('selectAllCheckbox').checked = true;
+      toggleSelectAll();
+    }
+
+    function deselectAll() {
+      document.getElementById('selectAllCheckbox').checked = false;
+      toggleSelectAll();
+    }
+
+    // Select only orders with Shopify notes
+    function selectOrdersWithNotes() {
+      // First deselect all
+      const checkboxes = document.querySelectorAll('.order-checkbox');
+      checkboxes.forEach(cb => { cb.checked = false; });
+      
+      // Then select only orders with notes
+      let selectedCount = 0;
+      scannedOrders.forEach(order => {
+        if (order.shopifyNote && order.shopifyNote.trim() !== '') {
+          const checkbox = document.querySelector(`.order-checkbox[data-order-id="${order.orderId}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            selectedCount++;
+          }
+        }
+      });
+      
+      updateSelectedCount();
+      
+      if (selectedCount === 0) {
+        showStatus('No orders with Shopify notes found', 'info');
+      } else {
+        showStatus(`Selected ${selectedCount} orders with Shopify notes`, 'success');
+      }
+    }
+
+    // Update selected count
+    function updateSelectedCount() {
+      const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+      selectedOrders.clear();
+      checkboxes.forEach(cb => selectedOrders.add(cb.dataset.orderId));
+      document.getElementById('selectedCount').textContent = selectedOrders.size;
+    }
+
+    // View full preview
+    function viewFullPreview(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order) return;
+      
+      alert(order.formattedText);
+    }
+
+    // NEW: View Shopify note
+    function viewShopifyNote(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order || !order.shopifyNote) return;
+      
+      alert(`Shopify Note for Order #${order.orderNumber}:\n\n${order.shopifyNote}`);
+    }
+
+    // Tag single order
+    async function tagSingleOrder(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order) return;
+      
+      try {
+        const response = await fetch('/api/order-formatter/tag-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.orderId,
+            tag: order.suggestedTag
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        showStatus(`Tagged order #${order.orderNumber} with ${order.suggestedTag}`, 'success');
+        
+      } catch (error) {
+        showStatus('Tag failed: ' + error.message, 'error');
+      }
+    }
+
+    // Format single order - NOW INCLUDES SHOPIFY NOTE
+    async function formatSingleOrder(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order) return;
+      
+      try {
+        const response = await fetch('/api/order-formatter/format-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.orderId,
+            formattedText: order.formattedText,
+            shopifyNote: order.shopifyNote || '' // SEND SHOPIFY NOTE
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        let statusMsg = `Formatted order #${order.orderNumber} Gift Note`;
+        if (data.syncedNote) {
+          statusMsg += ' + synced Shopify note';
+        }
+        showStatus(statusMsg, 'success');
+        
+      } catch (error) {
+        showStatus('Format failed: ' + error.message, 'error');
+      }
+    }
+
+    // Fill SKUs for single order
+    async function fillSingleOrderSKUs(orderId) {
+      const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+      if (!order) return;
+      
+      try {
+        showStatus(`Filling SKUs for order #${order.orderNumber}...`, 'info');
+        
+        const response = await fetch('/api/order-formatter/fill-skus', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: order.orderId
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) throw new Error(data.error);
+        
+        if (data.filledCount > 0) {
+          showStatus(`✅ Filled ${data.filledCount} SKU(s) for order #${order.orderNumber}`, 'success');
+        } else {
+          showStatus(`No SKUs to fill for order #${order.orderNumber}`, 'info');
+        }
+        
+      } catch (error) {
+        showStatus('Fill SKUs failed: ' + error.message, 'error');
+      }
+    }
+
+    // Bulk tag
+    async function bulkTag() {
+      if (selectedOrders.size === 0) {
+        showStatus('Please select at least one order', 'warning');
+        return;
+      }
+      
+      if (!confirm(`Tag ${selectedOrders.size} orders?`)) return;
+      
+      const bulkTagBtn = document.getElementById('bulkTagBtn');
+      bulkTagBtn.disabled = true;
+      
+      const ordersToTag = [];
+      selectedOrders.forEach(orderId => {
+        const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+        if (order) {
+          ordersToTag.push({
+            orderId: order.orderId,
+            orderNumber: order.orderNumber,
+            tag: order.suggestedTag
+          });
+        }
+      });
+      
+      if (ordersToTag.length === 0) {
+        showStatus('No orders found to tag - please try scanning again', 'error');
+        bulkTagBtn.disabled = false;
+        return;
+      }
+      
+      try {
+        updateProgress(0, ordersToTag.length);
+        showStatus(`Tagging ${ordersToTag.length} orders...`, 'info');
+        
+        const results = { success: 0, failed: 0, errors: [] };
+        
+        for (let i = 0; i < ordersToTag.length; i++) {
+          const order = ordersToTag[i];
+          
+          try {
+            const response = await fetch('/api/order-formatter/tag-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: order.orderId,
+                tag: order.tag
+              })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+              throw new Error(data.error);
+            }
+            
+            results.success++;
+            
+          } catch (error) {
+            results.failed++;
+            results.errors.push({
+              orderNumber: order.orderNumber,
+              error: error.message
+            });
+          }
+          
+          updateProgress(i + 1, ordersToTag.length);
+          
+          if (i < ordersToTag.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+        }
+        
+        let statusMessage = `Bulk tag complete! ✅ ${results.success} tagged`;
+        if (results.failed > 0) {
+          statusMessage += `, ❌ ${results.failed} failed`;
+        }
+        
+        showStatus(statusMessage, results.failed > 0 ? 'warning' : 'success');
+        
+      } catch (error) {
+        showStatus('Bulk tag failed: ' + error.message, 'error');
+      } finally {
+        bulkTagBtn.disabled = false;
+        setTimeout(() => updateProgress(0, 0), 3000);
+      }
+    }
+
+    // Bulk format - NOW INCLUDES SHOPIFY NOTES
+    async function bulkFormat() {
+      if (selectedOrders.size === 0) {
+        showStatus('Please select at least one order', 'warning');
+        return;
+      }
+      
+      if (!confirm(`Format ${selectedOrders.size} orders to Gift Note (with Shopify notes sync)?`)) return;
+      
+      const bulkFormatBtn = document.getElementById('bulkFormatBtn');
+      bulkFormatBtn.disabled = true;
+      
+      const ordersToFormat = [];
+      selectedOrders.forEach(orderId => {
+        const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+        if (order) {
+          ordersToFormat.push({
+            orderId: order.orderId,
+            orderNumber: order.orderNumber,
+            formattedText: order.formattedText,
+            shopifyNote: order.shopifyNote || '' // INCLUDE SHOPIFY NOTE
+          });
+        }
+      });
+      
+      if (ordersToFormat.length === 0) {
+        showStatus('No orders found to format - please try scanning again', 'error');
+        bulkFormatBtn.disabled = false;
+        return;
+      }
+      
+      try {
+        updateProgress(0, ordersToFormat.length);
+        showStatus(`Formatting ${ordersToFormat.length} orders...`, 'info');
+        
+        const results = { success: 0, failed: 0, syncedNotes: 0, errors: [] };
+        
+        for (let i = 0; i < ordersToFormat.length; i++) {
+          const order = ordersToFormat[i];
+          
+          try {
+            const response = await fetch('/api/order-formatter/format-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: order.orderId,
+                formattedText: order.formattedText,
+                shopifyNote: order.shopifyNote // SEND SHOPIFY NOTE
+              })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+              throw new Error(data.error);
+            }
+            
+            results.success++;
+            if (data.syncedNote) {
+              results.syncedNotes++;
+            }
+            
+          } catch (error) {
+            results.failed++;
+            results.errors.push({
+              orderNumber: order.orderNumber,
+              error: error.message
+            });
+          }
+          
+          updateProgress(i + 1, ordersToFormat.length);
+          
+          if (i < ordersToFormat.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+        
+        let statusMessage = `Bulk format complete! ✅ ${results.success} formatted`;
+        if (results.syncedNotes > 0) {
+          statusMessage += ` (${results.syncedNotes} notes synced)`;
+        }
+        if (results.failed > 0) {
+          statusMessage += `, ❌ ${results.failed} failed`;
+        }
+        
+        showStatus(statusMessage, results.failed > 0 ? 'warning' : 'success');
+        
+      } catch (error) {
+        showStatus('Bulk format failed: ' + error.message, 'error');
+      } finally {
+        bulkFormatBtn.disabled = false;
+        setTimeout(() => updateProgress(0, 0), 3000);
+      }
+    }
+
+    // Bulk fill SKUs
+    async function bulkFillSKUs() {
+      if (selectedOrders.size === 0) {
+        showStatus('Please select at least one order', 'warning');
+        return;
+      }
+      
+      if (!confirm(`Fill customs SKUs for ${selectedOrders.size} orders?`)) return;
+      
+      const bulkFillSKUsBtn = document.getElementById('bulkFillSKUsBtn');
+      bulkFillSKUsBtn.disabled = true;
+      
+      const ordersToFill = [];
+      selectedOrders.forEach(orderId => {
+        const order = scannedOrders.find(o => String(o.orderId) === String(orderId));
+        if (order) {
+          ordersToFill.push({
+            orderId: order.orderId,
+            orderNumber: order.orderNumber
+          });
+        }
+      });
+      
+      if (ordersToFill.length === 0) {
+        showStatus('No orders found - please try scanning again', 'error');
+        bulkFillSKUsBtn.disabled = false;
+        return;
+      }
+      
+      try {
+        updateProgress(0, ordersToFill.length);
+        showStatus(`Filling SKUs for ${ordersToFill.length} orders...`, 'info');
+        
+        const results = {
+          success: 0,
+          failed: 0,
+          totalFilled: 0,
+          errors: []
+        };
+        
+        for (let i = 0; i < ordersToFill.length; i++) {
+          const order = ordersToFill[i];
+          
+          try {
+            const response = await fetch('/api/order-formatter/fill-skus', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: order.orderId
+              })
+            });
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+              throw new Error(data.error);
+            }
+            
+            results.success++;
+            results.totalFilled += data.filledCount || 0;
+            
+          } catch (error) {
+            results.failed++;
+            results.errors.push({
+              orderNumber: order.orderNumber,
+              error: error.message
+            });
+          }
+          
+          updateProgress(i + 1, ordersToFill.length);
+          
+          if (i < ordersToFill.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+        
+        let statusMessage = `Bulk SKU fill complete! ✅ ${results.totalFilled} SKUs filled across ${results.success} orders`;
+        if (results.failed > 0) {
+          statusMessage += `, ❌ ${results.failed} failed`;
+        }
+        
+        showStatus(statusMessage, results.failed > 0 ? 'warning' : 'success');
+        
+      } catch (error) {
+        showStatus('Bulk SKU fill failed: ' + error.message, 'error');
+      } finally {
+        bulkFillSKUsBtn.disabled = false;
+        setTimeout(() => updateProgress(0, 0), 3000);
+      }
+    }
+  </script>
+</body>
+</html>

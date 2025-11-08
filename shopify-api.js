@@ -1,4 +1,4 @@
-// shopify-api.js - OPTIMIZED - Extended version with customer methods
+// shopify-api.js - OPTIMIZED - Extended version with customer methods + ORDER NOTES
 const axios = require('axios');
 const dotenv = require('dotenv');
 
@@ -161,6 +161,131 @@ class ShopifyAPI {
       }
     });
     return response.data.orders || [];
+  }
+
+  // -------- Order Note Methods (NEW - For Order Formatter) ------------------------
+  
+  /**
+   * Get order by order number or order name
+   * Used by Order Formatter to fetch Shopify internal notes
+   * @param {string|number} orderIdentifier - Order number (e.g., "1001") or name (e.g., "#1001")
+   * @returns {Object} Shopify order object or null if not found
+   */
+  async getOrderByNumber(orderIdentifier) {
+    try {
+      // Ensure order number has # prefix for Shopify API
+      let orderNumber = String(orderIdentifier).trim();
+      if (!orderNumber.startsWith('#')) {
+        orderNumber = '#' + orderNumber;
+      }
+      
+      // Search for order by name (Shopify's order number)
+      // Note: "name" in Shopify API must be like "#55534"
+      await this.rateLimit();
+      const response = await this.client.get('/orders.json', {
+        params: {
+          name: orderNumber,  // Must include # prefix
+          status: 'any'
+        }
+      });
+      
+      if (response.data.orders && response.data.orders.length > 0) {
+        return response.data.orders[0]; // Return first match
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.error(`[Shopify API] Failed to get order ${orderIdentifier}:`, error.message);
+      return null;
+    }
+  }
+  
+  /**
+   * Get internal note for an order
+   * Fetches the "note" field from Shopify which contains internal CS notes
+   * @param {string|number} orderNumber - ShipStation order number (e.g., "1001")
+   * @returns {string|null} Internal note text or null if not found
+   */
+  async getOrderNote(orderNumber) {
+    try {
+      const order = await this.getOrderByNumber(orderNumber);
+      
+      if (!order) {
+        console.log(`[Shopify API] Order ${orderNumber} not found in Shopify`);
+        return null;
+      }
+      
+      // Shopify's "note" field is the internal note
+      const note = order.note || '';
+      
+      if (note) {
+        console.log(`[Shopify API] ✅ Found note for order ${orderNumber} (${note.length} chars)`);
+      } else {
+        console.log(`[Shopify API] No note for order ${orderNumber}`);
+      }
+      
+      return note;
+      
+    } catch (error) {
+      console.error(`[Shopify API] Failed to get note for order ${orderNumber}:`, error.message);
+      return null;
+    }
+  }
+  
+  /**
+   * Batch fetch notes for multiple orders
+   * More efficient than calling getOrderNote() individually
+   * Includes progress logging and rate limiting
+   * @param {Array<string|number>} orderNumbers - Array of order numbers (e.g., ["1001", "1002", "1003"])
+   * @returns {Object} Map of orderNumber -> note (e.g., { "1001": "Rush order", "1002": "", "1003": "Gift wrap" })
+   */
+  async batchGetOrderNotes(orderNumbers) {
+    const notes = {};
+    
+    try {
+      console.log(`[Shopify API] Fetching notes for ${orderNumbers.length} orders...`);
+      const startTime = Date.now();
+      
+      for (let i = 0; i < orderNumbers.length; i++) {
+        const orderNumber = orderNumbers[i];
+        
+        try {
+          const note = await this.getOrderNote(orderNumber);
+          notes[orderNumber] = note || '';
+          
+          // Progress logging every 10 orders
+          if ((i + 1) % 10 === 0) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            const rate = ((i + 1) / elapsed).toFixed(1);
+            console.log(`[Shopify API] Progress: ${i + 1}/${orderNumbers.length} orders (${rate} orders/sec)`);
+          }
+          
+        } catch (error) {
+          console.error(`[Shopify API] Failed to fetch note for order ${orderNumber}:`, error.message);
+          notes[orderNumber] = '';
+        }
+      }
+      
+      const notesFound = Object.values(notes).filter(n => n).length;
+      const totalTime = Math.round((Date.now() - startTime) / 1000);
+      console.log(`[Shopify API] ✅ Fetched ${notesFound}/${orderNumbers.length} notes in ${totalTime}s`);
+      
+      return notes;
+      
+    } catch (error) {
+      console.error('[Shopify API] Batch fetch failed:', error.message);
+      return notes;
+    }
+  }
+  
+  /**
+   * Check if Shopify API is configured properly
+   * Used by Order Formatter to determine if note fetching is available
+   * @returns {boolean} true if SHOPIFY_STORE and SHOPIFY_ACCESS_TOKEN are set
+   */
+  isConfigured() {
+    return !!(this.store && this.accessToken);
   }
 
   // -------- Existing Product Methods (unchanged) ------------------------
