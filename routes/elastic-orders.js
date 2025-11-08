@@ -7,6 +7,12 @@ const path = require('path');
 
 const { ShipStationAPI } = require('../shipstation-api.js');
 const { requireAuth, requireAuthApi } = require('../utils/auth-middleware');
+const {
+  getCachedOrders,
+  saveCachedOrders,
+  getCacheSyncStatus,
+  isCacheFresh
+} = require('../utils/shipstation-cache');
 
 const shipstation = new ShipStationAPI();
 
@@ -51,8 +57,22 @@ function containsSearchTerm(order, searchTerms) {
 }
 
 /**
+ * Get cache status
+ * GET /api/elastic-orders/cache-status
+ */
+router.get('/api/elastic-orders/cache-status', requireAuthApi, async (req, res) => {
+  try {
+    const status = await getCacheSyncStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting cache status:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * API endpoint to scan for orders containing specific items
- * GET /api/elastic-orders/scan?days=30&searchTerm=elastic
+ * GET /api/elastic-orders/scan?days=30&searchTerm=elastic&refresh=true
  */
 router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
   try {
@@ -60,12 +80,40 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
     const pageSize = 100; // ShipStation max
     const maxPages = parseInt(req.query.maxPages) || 10;
     const searchTermParam = req.query.searchTerm || 'elastic';
+    const forceRefresh = req.query.refresh === 'true';
 
     // Parse search terms - support comma-separated values
     const searchTerms = searchTermParam
       .split(',')
       .map(term => term.trim().toLowerCase())
       .filter(term => term.length > 0);
+
+    // Check if we can use cache
+    const useCache = !forceRefresh && await isCacheFresh(24);
+
+    if (useCache) {
+      console.log('[Cache] Using cached orders (fast mode)');
+      const cachedOrders = await getCachedOrders(searchTerms);
+      const totalItemQuantity = cachedOrders.reduce((sum, order) =>
+        sum + order.matchingItems.reduce((itemSum, item) => itemSum + (item.quantity || 0), 0), 0
+      );
+
+      const cacheStatus = await getCacheSyncStatus();
+
+      return res.json({
+        success: true,
+        searchTerm: searchTermParam,
+        totalOrders: cachedOrders.length,
+        totalItemQuantity: totalItemQuantity,
+        orders: cachedOrders,
+        fromCache: true,
+        cacheLastSync: cacheStatus.lastSync,
+        dateRange: {
+          from: 'cached',
+          to: 'cached'
+        }
+      });
+    }
 
     // Calculate date range
     const since = new Date();
@@ -179,12 +227,18 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
 
     console.log(`Found ${matchedOrders.length} unfulfilled orders containing "${searchTermParam}" (${totalItemQuantity} total items)`);
 
+    // Save to cache (async, don't wait)
+    saveCachedOrders(matchedOrders).catch(err =>
+      console.error('[Cache] Failed to save orders:', err)
+    );
+
     res.json({
       success: true,
       searchTerm: searchTermParam,
       totalOrders: matchedOrders.length,
       totalItemQuantity: totalItemQuantity,
       orders: matchedOrders,
+      fromCache: false,
       dateRange: {
         from: createDateStart,
         to: new Date().toISOString().split('T')[0]

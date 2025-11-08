@@ -123,7 +123,12 @@
             <input id="maxPages" class="input" type="number" value="10" min="1" max="50" style="width:90px">
           </label>
           <button type="button" class="btn btn-primary" id="btnScan">Search Orders</button>
+          <button type="button" class="btn btn-secondary" id="btnRefresh">Refresh from ShipStation</button>
           <button type="button" class="btn btn-secondary" id="btnExport" style="display:none;">Export to CSV</button>
+        </div>
+
+        <div id="cacheInfo" style="color: #6b7280; font-size: 0.9rem; margin: 0.5rem 0; display: none;">
+          <span id="cacheInfoText"></span>
         </div>
 
         <div id="status" class="status"></div>
@@ -165,6 +170,7 @@
 
   <script>
     const btnScan = document.getElementById('btnScan');
+    const btnRefresh = document.getElementById('btnRefresh');
     const btnExport = document.getElementById('btnExport');
     const status = document.getElementById('status');
     const summaryBox = document.getElementById('summaryBox');
@@ -172,6 +178,8 @@
     const totalItems = document.getElementById('totalItems');
     const resultsCard = document.getElementById('resultsCard');
     const resultsTbody = document.getElementById('resultsTbody');
+    const cacheInfo = document.getElementById('cacheInfo');
+    const cacheInfoText = document.getElementById('cacheInfoText');
 
     let currentResults = null;
 
@@ -205,23 +213,29 @@
       return `<span class="badge ${className}">${label}</span>`;
     }
 
-    async function scanOrders() {
+    async function scanOrders(forceRefresh = false) {
       const days = parseInt(document.getElementById('scanDays').value) || 30;
       const maxPages = parseInt(document.getElementById('maxPages').value) || 10;
       const searchTerm = document.getElementById('searchTerm').value.trim() || 'elastic';
 
       btnScan.disabled = true;
+      btnRefresh.disabled = true;
       btnScan.innerHTML = '<span class="spinner"></span>Searching...';
-      showStatus(`Searching ShipStation for "${searchTerm}"...`, 'info');
+      if (forceRefresh) {
+        btnRefresh.innerHTML = '<span class="spinner"></span>Refreshing...';
+      }
+      showStatus(forceRefresh ? 'Refreshing from ShipStation...' : `Searching for "${searchTerm}"...`, 'info');
       summaryBox.classList.remove('show');
       resultsCard.style.display = 'none';
       btnExport.style.display = 'none';
+      cacheInfo.style.display = 'none';
 
       try {
         const params = new URLSearchParams({
           days: days,
           maxPages: maxPages,
-          searchTerm: searchTerm
+          searchTerm: searchTerm,
+          refresh: forceRefresh.toString()
         });
         const response = await fetch(`/api/elastic-orders/scan?${params}`);
         const data = await response.json();
@@ -281,14 +295,27 @@
           btnExport.style.display = 'inline-block';
         }
 
-        showStatus(`Found ${data.totalOrders} orders (${data.totalItemQuantity} items matching "${data.searchTerm}") from ${data.dateRange.from} to ${data.dateRange.to}`, 'ok');
+        // Show cache info if applicable
+        if (data.fromCache) {
+          cacheInfo.style.display = 'block';
+          const cacheDate = new Date(data.cacheLastSync);
+          cacheInfoText.textContent = `⚡ Using cached data (last updated: ${cacheDate.toLocaleString()})`;
+        }
+
+        const statusMsg = data.fromCache
+          ? `Found ${data.totalOrders} orders (${data.totalItemQuantity} items matching "${data.searchTerm}") - from cache`
+          : `Found ${data.totalOrders} orders (${data.totalItemQuantity} items matching "${data.searchTerm}") from ${data.dateRange.from} to ${data.dateRange.to}`;
+
+        showStatus(statusMsg, 'ok');
 
       } catch (error) {
         console.error('Error:', error);
         showStatus(`Error: ${error.message}`, 'err');
       } finally {
         btnScan.disabled = false;
+        btnRefresh.disabled = false;
         btnScan.textContent = 'Search Orders';
+        btnRefresh.textContent = 'Refresh from ShipStation';
       }
     }
 
@@ -340,12 +367,13 @@
       window.URL.revokeObjectURL(url);
     }
 
-    btnScan.addEventListener('click', scanOrders);
+    btnScan.addEventListener('click', () => scanOrders(false));
+    btnRefresh.addEventListener('click', () => scanOrders(true));
     btnExport.addEventListener('click', exportToCSV);
 
     // Auto-scan on page load
     window.addEventListener('DOMContentLoaded', () => {
-      scanOrders();
+      scanOrders(false);
     });
   </script>
 </body>
