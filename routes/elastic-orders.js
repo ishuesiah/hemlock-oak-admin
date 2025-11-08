@@ -16,7 +16,7 @@ router.get('/elastic-orders', requireAuth, (_req, res) => res.send(elasticOrders
 
 /**
  * Helper function to check if an order contains elastic items
- * Searches line item SKUs, names, and stringifiedProperties
+ * Searches line item SKUs, names, and options (ItemOption array)
  */
 function containsElastic(order) {
   if (!order || !Array.isArray(order.items)) return false;
@@ -26,12 +26,25 @@ function containsElastic(order) {
   for (const item of order.items) {
     const sku = String(item.sku || '').toLowerCase();
     const name = String(item.name || '').toLowerCase();
-    const stringifiedProps = String(item.stringifiedProperties || '').toLowerCase();
 
-    // Check if any elastic keyword appears in SKU, name, or stringifiedProperties
+    // Check SKU and name
     for (const keyword of elasticKeywords) {
-      if (sku.includes(keyword) || name.includes(keyword) || stringifiedProps.includes(keyword)) {
+      if (sku.includes(keyword) || name.includes(keyword)) {
         return true;
+      }
+    }
+
+    // Check options array (ItemOption model: {name, value})
+    if (Array.isArray(item.options)) {
+      for (const option of item.options) {
+        const optionName = String(option.name || '').toLowerCase();
+        const optionValue = String(option.value || '').toLowerCase();
+
+        for (const keyword of elasticKeywords) {
+          if (optionName.includes(keyword) || optionValue.includes(keyword)) {
+            return true;
+          }
+        }
       }
     }
   }
@@ -99,10 +112,25 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
             const elasticItems = order.items.filter(item => {
               const sku = String(item.sku || '').toLowerCase();
               const name = String(item.name || '').toLowerCase();
-              const stringifiedProps = String(item.stringifiedProperties || '').toLowerCase();
-              return ['elastic', 'clip band', 'clipband'].some(keyword =>
-                sku.includes(keyword) || name.includes(keyword) || stringifiedProps.includes(keyword)
-              );
+              const keywords = ['elastic', 'clip band', 'clipband'];
+
+              // Check SKU and name
+              if (keywords.some(keyword => sku.includes(keyword) || name.includes(keyword))) {
+                return true;
+              }
+
+              // Check options array
+              if (Array.isArray(item.options)) {
+                for (const option of item.options) {
+                  const optionName = String(option.name || '').toLowerCase();
+                  const optionValue = String(option.value || '').toLowerCase();
+                  if (keywords.some(keyword => optionName.includes(keyword) || optionValue.includes(keyword))) {
+                    return true;
+                  }
+                }
+              }
+
+              return false;
             });
 
             elasticOrders.push({
@@ -118,7 +146,7 @@ router.get('/api/elastic-orders/scan', requireAuthApi, async (req, res) => {
                 sku: item.sku,
                 name: item.name,
                 quantity: item.quantity,
-                stringifiedProperties: item.stringifiedProperties || ''
+                options: item.options || []
               })),
               shipStationUrl: `https://ship.shipstation.com/orders/details/${order.orderId}`
             });

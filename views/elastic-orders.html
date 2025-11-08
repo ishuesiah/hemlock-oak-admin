@@ -227,8 +227,11 @@
             const elasticItemsHtml = order.elasticItems
               .map(item => {
                 let html = `<div class="elastic-item">${item.name} (${item.sku}) - Qty: ${item.quantity}`;
-                if (item.stringifiedProperties) {
-                  html += `<br><small style="color:#6b7280;">${item.stringifiedProperties}</small>`;
+                if (item.options && item.options.length > 0) {
+                  const optionsStr = item.options
+                    .map(opt => `${opt.name}: ${opt.value}`)
+                    .join(', ');
+                  html += `<br><small style="color:#6b7280;">${optionsStr}</small>`;
                 }
                 html += `</div>`;
                 return html;
@@ -273,16 +276,21 @@
     function exportToCSV() {
       if (!currentResults || !currentResults.orders) return;
 
-      const headers = ['Order Number', 'Order Date', 'Customer Name', 'Customer Email', 'Status', 'Elastic Items', 'Properties', 'ShipStation URL'];
+      const headers = ['Order Number', 'Order Date', 'Customer Name', 'Customer Email', 'Status', 'Elastic Items', 'Item Options', 'ShipStation URL'];
       const rows = currentResults.orders.map(order => {
         const elasticItems = order.elasticItems
           .map(item => `${item.name} (${item.sku}) x${item.quantity}`)
           .join('; ');
 
-        const properties = order.elasticItems
-          .map(item => item.stringifiedProperties || '')
-          .filter(prop => prop)
-          .join('; ');
+        const itemOptions = order.elasticItems
+          .map(item => {
+            if (item.options && item.options.length > 0) {
+              return item.options.map(opt => `${opt.name}: ${opt.value}`).join(', ');
+            }
+            return '';
+          })
+          .filter(opt => opt)
+          .join(' | ');
 
         return [
           order.orderNumber,
@@ -291,7 +299,7 @@
           order.customerEmail,
           order.orderStatus,
           elasticItems,
-          properties,
+          itemOptions,
           order.shipStationUrl
         ];
       });
