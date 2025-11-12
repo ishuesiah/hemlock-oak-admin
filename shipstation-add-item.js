@@ -336,6 +336,56 @@ class ShipStationAPI {
       throw error;
     }
   }
+
+  /**
+   * Add a tag to an order by order number
+   * @param {string} orderNumber - Order number
+   * @param {string} tagName - Tag name to add
+   * @returns {Promise<object>} Result of operation
+   */
+  async addTagToOrder(orderNumber, tagName) {
+    try {
+      console.log(`[ShipStation] Adding tag "${tagName}" to order ${orderNumber}`);
+
+      // Get order to get orderId
+      const order = await this.getOrderByNumber(orderNumber);
+      if (!order) {
+        throw new Error(`Order ${orderNumber} not found`);
+      }
+
+      // Get or create tag
+      const { data: tags } = await this.client.get('/accounts/listtags');
+      let tag = tags.find(t => t.name === tagName);
+
+      if (!tag) {
+        // Create tag
+        const { data: newTag } = await this.client.post('/accounts/createtag', { name: tagName });
+        tag = newTag;
+        console.log(`[ShipStation] Created new tag: ${tagName} (ID: ${tag.tagId})`);
+      } else {
+        console.log(`[ShipStation] Using existing tag: ${tagName} (ID: ${tag.tagId})`);
+      }
+
+      // Add tag to order
+      await this.client.post('/orders/addtag', {
+        orderId: order.orderId,
+        tagId: tag.tagId
+      });
+
+      console.log(`[ShipStation] ✅ Successfully added tag "${tagName}" to order ${orderNumber}`);
+
+      return {
+        success: true,
+        orderNumber,
+        tagName,
+        tagId: tag.tagId
+      };
+
+    } catch (error) {
+      console.error(`[ShipStation] Error adding tag to order ${orderNumber}:`, error.message);
+      throw error;
+    }
+  }
 }
 
 // ========== TEST FUNCTION ==========

@@ -200,4 +200,66 @@ router.get('/api/shipstation/order/:orderNumber', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/shipstation/orders/batch-tag - Add tag to multiple orders
+ */
+router.post('/api/shipstation/orders/batch-tag', async (req, res) => {
+  try {
+    const { orderNumbers, tagName } = req.body;
+
+    if (!orderNumbers || !Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+      return res.status(400).json({ error: 'Order numbers array is required' });
+    }
+
+    if (!tagName || typeof tagName !== 'string' || !tagName.trim()) {
+      return res.status(400).json({ error: 'Tag name is required' });
+    }
+
+    // Ensure API is initialized
+    if (!shipstationAPI) {
+      shipstationAPI = new ShipStationAPI();
+      await shipstationAPI.loadCUSMA('./data/CUSMA.csv').catch(() => {});
+    }
+
+    console.log(`[Batch Tag] Adding tag "${tagName}" to ${orderNumbers.length} orders`);
+
+    let tagged = 0;
+    let failed = 0;
+    const errors = [];
+
+    // Process each order
+    for (const orderNumber of orderNumbers) {
+      try {
+        await shipstationAPI.addTagToOrder(orderNumber, tagName);
+        tagged++;
+        console.log(`[Batch Tag] ✓ Tagged order ${orderNumber}`);
+
+        // Rate limiting - wait 500ms between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+      } catch (error) {
+        failed++;
+        errors.push({ orderNumber, error: error.message });
+        console.error(`[Batch Tag] ✗ Failed to tag order ${orderNumber}:`, error.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      tagged,
+      failed,
+      total: orderNumbers.length,
+      errors: errors.length > 0 ? errors : undefined,
+      message: `Tagged ${tagged} of ${orderNumbers.length} orders`
+    });
+
+  } catch (error) {
+    console.error('[API] Error in batch-tag endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to tag orders'
+    });
+  }
+});
+
 module.exports = router;
