@@ -4,6 +4,9 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs').promises;
 
+// Import authentication middleware
+const { requireAuth, requireAuthApi } = require('../utils/auth-middleware');
+
 // Import the working ShipStation API from shipstation-add-item.js
 const { ShipStationAPI } = require('../shipstation-add-item');
 
@@ -48,7 +51,7 @@ let shipstationAPI;
 /**
  * GET /order-item-adder - Serve the UI page from views folder
  */
-router.get('/order-item-adder', async (req, res) => {
+router.get('/order-item-adder', requireAuth, async (req, res) => {
   try {
     const htmlPath = path.join(__dirname, '../views/order-item-adder.html');
     const html = await fs.readFile(htmlPath, 'utf-8');
@@ -62,7 +65,7 @@ router.get('/order-item-adder', async (req, res) => {
 /**
  * POST /api/shipstation/orders/add-item - Add item to orders (BATCH PROCESSING)
  */
-router.post('/api/shipstation/orders/add-item', async (req, res) => {
+router.post('/api/shipstation/orders/add-item', requireAuthApi, async (req, res) => {
   try {
     const { orderNumbers, item, customsOnly } = req.body;
 
@@ -139,7 +142,7 @@ router.post('/api/shipstation/orders/add-item', async (req, res) => {
 /**
  * GET /api/shipstation/unfulfilled-orders - Get cached unfulfilled orders
  */
-router.get('/api/shipstation/unfulfilled-orders', async (req, res) => {
+router.get('/api/shipstation/unfulfilled-orders', requireAuthApi, async (req, res) => {
   try {
     const cache = await loadUnfulfilledOrders();
 
@@ -159,7 +162,7 @@ router.get('/api/shipstation/unfulfilled-orders', async (req, res) => {
 /**
  * POST /api/shipstation/unfulfilled-orders/refresh - Force refresh unfulfilled orders cache
  */
-router.post('/api/shipstation/unfulfilled-orders/refresh', async (req, res) => {
+router.post('/api/shipstation/unfulfilled-orders/refresh', requireAuthApi, async (req, res) => {
   try {
     console.log('[API] Manual refresh of unfulfilled orders requested');
     const orders = await forceSyncUnfulfilledOrders();
@@ -178,7 +181,7 @@ router.post('/api/shipstation/unfulfilled-orders/refresh', async (req, res) => {
 /**
  * GET /api/shipstation/order/:orderNumber - Get full order details
  */
-router.get('/api/shipstation/order/:orderNumber', async (req, res) => {
+router.get('/api/shipstation/order/:orderNumber', requireAuthApi, async (req, res) => {
   try {
     const { orderNumber } = req.params;
 
@@ -203,7 +206,7 @@ router.get('/api/shipstation/order/:orderNumber', async (req, res) => {
 /**
  * POST /api/shipstation/orders/batch-tag - Add tag to multiple orders
  */
-router.post('/api/shipstation/orders/batch-tag', async (req, res) => {
+router.post('/api/shipstation/orders/batch-tag', requireAuthApi, async (req, res) => {
   try {
     const { orders, tagName } = req.body;
 

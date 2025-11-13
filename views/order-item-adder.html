@@ -684,8 +684,9 @@
                   monograms[letter] = (monograms[letter] || 0) + quantity;
                   totalMonograms += quantity;
                   foundLetter = true;
-                } else if (monogramItemsFound <= 3) {
-                  console.log(`[Recipe] Monogram item "${item.name}" has invalid letter: "${letter}"`);
+                  console.log(`[Recipe] ✅ Monogram "${item.name}" → Letter "${letter}" (from option "${monogramOption.name}")`);
+                } else {
+                  console.log(`[Recipe] ❌ Monogram "${item.name}" has invalid letter value: "${letter}" (from option "${monogramOption.name}")`);
                 }
               }
             }
@@ -699,16 +700,14 @@
                 monograms[letter] = (monograms[letter] || 0) + quantity;
                 totalMonograms += quantity;
                 foundLetter = true;
-                if (monogramItemsFound <= 3) {
-                  console.log(`[Recipe] Found letter "${letter}" in item name: "${item.name}"`);
-                }
-              } else if (monogramItemsFound <= 3) {
-                // Log why this monogram item wasn't counted
+                console.log(`[Recipe] ✅ Monogram "${item.name}" → Letter "${letter}" (extracted from name)`);
+              } else {
+                // Log ALL failing monogram items (not just first 3)
                 if (item.options && item.options.length > 0) {
-                  console.log(`[Recipe] Monogram item "${item.name}" has no matching option.`);
-                  console.log(`  Available options:`, item.options.map(o => `"${o.name}": "${o.value}"`).join(', '));
+                  console.log(`[Recipe] ❌ Monogram item "${item.name}" (SKU: ${item.sku}) - NO LETTER FOUND`);
+                  console.log(`     Available options: ${item.options.map(o => `"${o.name}": "${o.value}"`).join(', ')}`);
                 } else {
-                  console.log(`[Recipe] Monogram item "${item.name}" has no options and no letter in name`);
+                  console.log(`[Recipe] ❌ Monogram item "${item.name}" (SKU: ${item.sku}) - NO OPTIONS AND NO LETTER IN NAME`);
                 }
               }
             }
