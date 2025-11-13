@@ -120,6 +120,23 @@ class ShipStationAPI {
     return await this.customsManager.loadCUSMADatabase(csvPath);
   }
 
+  // Helper for retry logic on rate limits
+  async retryWithBackoff(fn, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err.response?.status === 429 && i < maxRetries - 1) {
+          const backoff = Math.pow(2, i) * 2000; // 2s, 4s, 8s
+          console.log(`[ShipStation] Rate limited, waiting ${backoff}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, backoff));
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   async getOrderByNumber(orderNumber) {
     const { data } = await this.client.get('/orders', {
       params: { orderNumber: String(orderNumber) }
@@ -394,7 +411,7 @@ class ShipStationAPI {
    * @returns {Promise<object>} Result of operation
    */
   async addTagToOrderById(orderId, tagName) {
-    try {
+    return this.retryWithBackoff(async () => {
       console.log(`[ShipStation] Adding tag "${tagName}" to order ID ${orderId}`);
 
       // Get or create tag
@@ -410,30 +427,13 @@ class ShipStationAPI {
         console.log(`[ShipStation] Using existing tag: ${tagName} (ID: ${tag.tagId})`);
       }
 
-      // Verify order exists before trying to tag it
-      try {
-        const { data } = await this.client.get('/orders', {
-          params: { orderId: orderId }
-        });
-
-        if (!data || !data.orders || data.orders.length === 0) {
-          throw new Error(`Order ID ${orderId} not found - may have been deleted or status changed`);
-        }
-
-        const order = data.orders[0];
-        console.log(`[ShipStation] Order ${order.orderNumber} found with status: ${order.orderStatus}`);
-      } catch (error) {
-        if (error.response?.status === 404) {
-          throw new Error(`Order ID ${orderId} not found in ShipStation - may have been shipped, cancelled, or deleted`);
-        }
-        throw error;
-      }
-
-      // Add tag to order
-      await this.client.post('/orders/addtag', {
+      // Add tag to order using ShipStation's addtag endpoint
+      const payload = {
         orderId: orderId,
         tagId: tag.tagId
-      });
+      };
+
+      const { data } = await this.client.post('/orders/addtag', payload);
 
       console.log(`[ShipStation] ✅ Successfully added tag "${tagName}" to order ID ${orderId}`);
 
@@ -441,16 +441,10 @@ class ShipStationAPI {
         success: true,
         orderId,
         tagName,
-        tagId: tag.tagId
+        tagId: tag.tagId,
+        data
       };
-
-    } catch (error) {
-      console.error(`[ShipStation] Error adding tag to order ID ${orderId}:`, error.message);
-      if (error.response?.data) {
-        console.error(`[ShipStation] API Response:`, error.response.data);
-      }
-      throw error;
-    }
+    });
   }
 }
 
