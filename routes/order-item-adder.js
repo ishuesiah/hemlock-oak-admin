@@ -205,10 +205,10 @@ router.get('/api/shipstation/order/:orderNumber', async (req, res) => {
  */
 router.post('/api/shipstation/orders/batch-tag', async (req, res) => {
   try {
-    const { orderNumbers, tagName } = req.body;
+    const { orders, tagName } = req.body;
 
-    if (!orderNumbers || !Array.isArray(orderNumbers) || orderNumbers.length === 0) {
-      return res.status(400).json({ error: 'Order numbers array is required' });
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Orders array is required' });
     }
 
     if (!tagName || typeof tagName !== 'string' || !tagName.trim()) {
@@ -221,26 +221,31 @@ router.post('/api/shipstation/orders/batch-tag', async (req, res) => {
       await shipstationAPI.loadCUSMA('./data/CUSMA.csv').catch(() => {});
     }
 
-    console.log(`[Batch Tag] Adding tag "${tagName}" to ${orderNumbers.length} orders`);
+    console.log(`[Batch Tag] Adding tag "${tagName}" to ${orders.length} orders`);
 
     let tagged = 0;
     let failed = 0;
     const errors = [];
 
     // Process each order
-    for (const orderNumber of orderNumbers) {
+    for (const order of orders) {
       try {
-        await shipstationAPI.addTagToOrder(orderNumber, tagName);
+        // Use addTagToOrderById to avoid 404 errors from status changes
+        await shipstationAPI.addTagToOrderById(order.orderId, tagName);
         tagged++;
-        console.log(`[Batch Tag] ✓ Tagged order ${orderNumber}`);
+        console.log(`[Batch Tag] ✓ Tagged order ${order.orderNumber} (ID: ${order.orderId})`);
 
         // Rate limiting - wait 500ms between requests
         await new Promise(resolve => setTimeout(resolve, 500));
 
       } catch (error) {
         failed++;
-        errors.push({ orderNumber, error: error.message });
-        console.error(`[Batch Tag] ✗ Failed to tag order ${orderNumber}:`, error.message);
+        errors.push({
+          orderNumber: order.orderNumber,
+          orderId: order.orderId,
+          error: error.message
+        });
+        console.error(`[Batch Tag] ✗ Failed to tag order ${order.orderNumber} (ID: ${order.orderId}):`, error.message);
       }
     }
 
@@ -248,9 +253,9 @@ router.post('/api/shipstation/orders/batch-tag', async (req, res) => {
       success: true,
       tagged,
       failed,
-      total: orderNumbers.length,
+      total: orders.length,
       errors: errors.length > 0 ? errors : undefined,
-      message: `Tagged ${tagged} of ${orderNumbers.length} orders`
+      message: `Tagged ${tagged} of ${orders.length} orders`
     });
 
   } catch (error) {

@@ -386,6 +386,50 @@ class ShipStationAPI {
       throw error;
     }
   }
+
+  /**
+   * Add a tag to an order by orderId (faster, no lookup needed)
+   * @param {number} orderId - ShipStation order ID
+   * @param {string} tagName - Tag name to add
+   * @returns {Promise<object>} Result of operation
+   */
+  async addTagToOrderById(orderId, tagName) {
+    try {
+      console.log(`[ShipStation] Adding tag "${tagName}" to order ID ${orderId}`);
+
+      // Get or create tag
+      const { data: tags } = await this.client.get('/accounts/listtags');
+      let tag = tags.find(t => t.name === tagName);
+
+      if (!tag) {
+        // Create tag
+        const { data: newTag } = await this.client.post('/accounts/createtag', { name: tagName });
+        tag = newTag;
+        console.log(`[ShipStation] Created new tag: ${tagName} (ID: ${tag.tagId})`);
+      } else {
+        console.log(`[ShipStation] Using existing tag: ${tagName} (ID: ${tag.tagId})`);
+      }
+
+      // Add tag to order
+      await this.client.post('/orders/addtag', {
+        orderId: orderId,
+        tagId: tag.tagId
+      });
+
+      console.log(`[ShipStation] ✅ Successfully added tag "${tagName}" to order ID ${orderId}`);
+
+      return {
+        success: true,
+        orderId,
+        tagName,
+        tagId: tag.tagId
+      };
+
+    } catch (error) {
+      console.error(`[ShipStation] Error adding tag to order ID ${orderId}:`, error.message);
+      throw error;
+    }
+  }
 }
 
 // ========== TEST FUNCTION ==========

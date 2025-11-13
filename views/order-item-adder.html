@@ -805,8 +805,9 @@
 
     // Tag all orders containing any elastic items
     async function tagAllElasticOrders() {
-      // Find all orders containing ANY elastic items
-      const ordersToTag = new Set();
+      // Find all orders containing ANY elastic items (collect orderId and orderNumber)
+      const ordersToTag = [];
+      const orderNumbersSet = new Set(); // To avoid duplicates
 
       allOrders.forEach(order => {
         if (!order.items || !Array.isArray(order.items)) return;
@@ -816,17 +817,23 @@
           const itemSku = (item.sku || '').toLowerCase();
 
           if (itemName.includes('elastic') || itemSku.includes('elastic')) {
-            ordersToTag.add(order.orderNumber);
+            if (!orderNumbersSet.has(order.orderNumber)) {
+              ordersToTag.push({
+                orderId: order.orderId,
+                orderNumber: order.orderNumber
+              });
+              orderNumbersSet.add(order.orderNumber);
+            }
           }
         });
       });
 
-      if (ordersToTag.size === 0) {
+      if (ordersToTag.length === 0) {
         alert('No orders found with elastic items');
         return;
       }
 
-      if (!confirm(`Add tag "elastic" to ${ordersToTag.size} order${ordersToTag.size !== 1 ? 's' : ''}?`)) {
+      if (!confirm(`Add tag "elastic" to ${ordersToTag.length} order${ordersToTag.length !== 1 ? 's' : ''}?`)) {
         return;
       }
 
@@ -839,7 +846,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            orderNumbers: Array.from(ordersToTag),
+            orders: ordersToTag,
             tagName: 'elastic'
           })
         });
