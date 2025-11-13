@@ -854,7 +854,24 @@
         const result = await response.json();
 
         if (result.success) {
-          alert(`✅ Successfully tagged ${result.tagged} order${result.tagged !== 1 ? 's' : ''} with "elastic"`);
+          let message = `✅ Successfully tagged ${result.tagged} of ${result.total} order${result.total !== 1 ? 's' : ''} with "elastic"`;
+
+          if (result.failed > 0) {
+            message += `\n\n⚠️ ${result.failed} order${result.failed !== 1 ? 's' : ''} failed (likely shipped/cancelled since cache update)`;
+
+            if (result.errors && result.errors.length > 0) {
+              const errorSamples = result.errors.slice(0, 5);
+              message += '\n\nFailed orders:';
+              errorSamples.forEach(err => {
+                message += `\n- Order ${err.orderNumber}: ${err.error}`;
+              });
+              if (result.errors.length > 5) {
+                message += `\n... and ${result.errors.length - 5} more`;
+              }
+            }
+          }
+
+          alert(message);
         } else {
           alert(`❌ Error: ${result.message}`);
         }

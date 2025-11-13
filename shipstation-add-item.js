@@ -410,6 +410,25 @@ class ShipStationAPI {
         console.log(`[ShipStation] Using existing tag: ${tagName} (ID: ${tag.tagId})`);
       }
 
+      // Verify order exists before trying to tag it
+      try {
+        const { data } = await this.client.get('/orders', {
+          params: { orderId: orderId }
+        });
+
+        if (!data || !data.orders || data.orders.length === 0) {
+          throw new Error(`Order ID ${orderId} not found - may have been deleted or status changed`);
+        }
+
+        const order = data.orders[0];
+        console.log(`[ShipStation] Order ${order.orderNumber} found with status: ${order.orderStatus}`);
+      } catch (error) {
+        if (error.response?.status === 404) {
+          throw new Error(`Order ID ${orderId} not found in ShipStation - may have been shipped, cancelled, or deleted`);
+        }
+        throw error;
+      }
+
       // Add tag to order
       await this.client.post('/orders/addtag', {
         orderId: orderId,
@@ -427,6 +446,9 @@ class ShipStationAPI {
 
     } catch (error) {
       console.error(`[ShipStation] Error adding tag to order ID ${orderId}:`, error.message);
+      if (error.response?.data) {
+        console.error(`[ShipStation] API Response:`, error.response.data);
+      }
       throw error;
     }
   }
