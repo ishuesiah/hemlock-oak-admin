@@ -414,35 +414,31 @@ class ShipStationAPI {
     return this.retryWithBackoff(async () => {
       console.log(`[ShipStation] Adding tag "${tagName}" to order ID ${orderId}`);
 
-      // Get or create tag
-      const { data: tags } = await this.client.get('/accounts/listtags');
-      let tag = tags.find(t => t.name === tagName);
+      // Get tag ID - match working webhook code pattern
+      const response = await this.client.get('/accounts/listtags');
+      const tags = response.data?.tags || response.data || [];
+      let tag = tags.find(t => t.name.toLowerCase() === tagName.toLowerCase());
 
       if (!tag) {
-        // Create tag
-        const { data: newTag } = await this.client.post('/accounts/createtag', { name: tagName });
-        tag = newTag;
-        console.log(`[ShipStation] Created new tag: ${tagName} (ID: ${tag.tagId})`);
-      } else {
-        console.log(`[ShipStation] Using existing tag: ${tagName} (ID: ${tag.tagId})`);
+        console.warn(`⚠️  Tag "${tagName}" not found in ShipStation - cannot tag order`);
+        throw new Error(`Tag "${tagName}" not found in ShipStation`);
       }
 
-      // Add tag to order using ShipStation's addtag endpoint
-      const payload = {
+      console.log(`  🏷️  Using tag "${tagName}" (ID: ${tag.tagId})`);
+
+      // Add tag to order - exactly like working webhook code
+      await this.client.post('/orders/addtag', {
         orderId: orderId,
         tagId: tag.tagId
-      };
+      });
 
-      const { data } = await this.client.post('/orders/addtag', payload);
-
-      console.log(`[ShipStation] ✅ Successfully added tag "${tagName}" to order ID ${orderId}`);
+      console.log(`  ✅ Tag added successfully to order ID ${orderId}`);
 
       return {
         success: true,
         orderId,
         tagName,
-        tagId: tag.tagId,
-        data
+        tagId: tag.tagId
       };
     });
   }
