@@ -309,6 +309,14 @@ router.post('/api/products/sync', requireAuthApi, async (req, res) => {
     console.log('[Products API] Fetching products from Shopify with metafields...');
     const products = await shopify.getAllProductsWithMetafields('active');
 
+    // Debug: Count how many variants have pick_number or warehouse_location
+    let withPick = 0, withLoc = 0;
+    products.forEach(p => p.variants.forEach(v => {
+      if (v.pick_number) withPick++;
+      if (v.warehouse_location) withLoc++;
+    }));
+    console.log(`[Products API] DEBUG: ${withPick} variants with pick_number, ${withLoc} with warehouse_location`);
+
     console.log(`[Products API] Fetched ${products.length} products, syncing to database...`);
 
     // Bulk upsert to database

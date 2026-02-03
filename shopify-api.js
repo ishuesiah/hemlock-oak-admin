@@ -577,7 +577,15 @@ class ShopifyAPI {
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+    // Debug: Count how many have actual values
+    let withPick = 0, withLoc = 0;
+    metafieldsMap.forEach((mf) => {
+      if (mf.pick_number) withPick++;
+      if (mf.warehouse_location) withLoc++;
+    });
     console.log(`[Shopify API] Fetched metafields for ${metafieldsMap.size} variants in ${elapsed}s`);
+    console.log(`[Shopify API] DEBUG: Found ${withPick} with pick_number, ${withLoc} with warehouse_location`);
 
     return metafieldsMap;
   }
