@@ -576,4 +576,141 @@ router.get('/api/products/shipstation-pending', requireAuthApi, async (req, res)
   }
 });
 
+// ============================================================================
+// SHOPIFY WEBHOOKS
+// ============================================================================
+
+/**
+ * Verify Shopify webhook signature (optional but recommended)
+ * For now, we'll process all requests but you can add HMAC verification later
+ */
+function verifyShopifyWebhook(req, res, next) {
+  // TODO: Add HMAC verification using SHOPIFY_API_SECRET
+  // For now, just proceed
+  next();
+}
+
+/**
+ * POST /api/webhooks/shopify/products/create
+ * Called when a product is created in Shopify
+ */
+router.post('/api/webhooks/shopify/products/create', verifyShopifyWebhook, async (req, res) => {
+  console.log('[Webhook] Product created:', req.body?.id, req.body?.title);
+
+  try {
+    const product = req.body;
+    if (!product || !product.id) {
+      return res.status(200).send('OK'); // Always return 200 to Shopify
+    }
+
+    // Fetch full product with metafields
+    const fullProduct = await shopify.getProduct(product.id);
+    if (fullProduct) {
+      // Get metafields for variants
+      const metafieldsMap = await shopify.fetchAllVariantMetafields();
+
+      // Attach metafields to variants
+      for (const variant of fullProduct.variants || []) {
+        const mf = metafieldsMap.get(String(variant.id));
+        if (mf) {
+          variant.pick_number = mf.pick_number;
+          variant.warehouse_location = mf.warehouse_location;
+          variant.pick_metafield_id = mf.pick_metafield_id;
+          variant.location_metafield_id = mf.location_metafield_id;
+        }
+      }
+
+      // Attach inventory fields
+      await shopify.attachInventoryFields([fullProduct]);
+
+      // Upsert to database
+      await productDb.bulkUpsertProducts([fullProduct]);
+      console.log('[Webhook] Product created and synced:', product.id);
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('[Webhook] Error processing product create:', error.message);
+    res.status(200).send('OK'); // Still return 200 to prevent retries
+  }
+});
+
+/**
+ * POST /api/webhooks/shopify/products/update
+ * Called when a product is updated in Shopify
+ */
+router.post('/api/webhooks/shopify/products/update', verifyShopifyWebhook, async (req, res) => {
+  console.log('[Webhook] Product updated:', req.body?.id, req.body?.title);
+
+  try {
+    const product = req.body;
+    if (!product || !product.id) {
+      return res.status(200).send('OK');
+    }
+
+    // Fetch full product with metafields
+    const fullProduct = await shopify.getProduct(product.id);
+    if (fullProduct) {
+      // Get metafields for this product's variants only
+      for (const variant of fullProduct.variants || []) {
+        const mf = await shopify.getVariantMetafields(variant.id);
+        if (mf) {
+          variant.pick_number = mf.pick_number;
+          variant.warehouse_location = mf.warehouse_location;
+          variant.pick_metafield_id = mf.pick_metafield_id;
+          variant.location_metafield_id = mf.location_metafield_id;
+        }
+      }
+
+      // Attach inventory fields
+      await shopify.attachInventoryFields([fullProduct]);
+
+      // Upsert to database
+      await productDb.bulkUpsertProducts([fullProduct]);
+      console.log('[Webhook] Product updated and synced:', product.id);
+    }
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('[Webhook] Error processing product update:', error.message);
+    res.status(200).send('OK');
+  }
+});
+
+/**
+ * POST /api/webhooks/shopify/products/delete
+ * Called when a product is deleted in Shopify
+ */
+router.post('/api/webhooks/shopify/products/delete', verifyShopifyWebhook, async (req, res) => {
+  console.log('[Webhook] Product deleted:', req.body?.id);
+
+  try {
+    const product = req.body;
+    if (!product || !product.id) {
+      return res.status(200).send('OK');
+    }
+
+    // Mark product and its variants as archived in the database
+    const pool = productDb.getPool();
+
+    // Mark variants as archived
+    await pool.query(
+      'UPDATE variants SET is_archived = TRUE WHERE shopify_product_id = $1',
+      [product.id]
+    );
+
+    // Update product status
+    await pool.query(
+      'UPDATE products SET status = $1 WHERE shopify_product_id = $2',
+      ['archived', product.id]
+    );
+
+    console.log('[Webhook] Product marked as archived:', product.id);
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('[Webhook] Error processing product delete:', error.message);
+    res.status(200).send('OK');
+  }
+});
+
 module.exports = router;
