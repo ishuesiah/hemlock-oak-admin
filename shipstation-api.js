@@ -323,6 +323,221 @@ class ShipStationAPI {
     }
     return results;
   }
+
+  /**
+   * Search for products by SKU
+   * @param {string} sku - The SKU to search for
+   * @returns {Promise<Array>} Array of matching products
+   */
+  async searchProductsBySku(sku, pageSize = 100) {
+    const q = String(sku || '').trim();
+    if (!q) return [];
+
+    return this.retryWithBackoff(async () => {
+      const { data } = await this.client.get('/products', { params: { sku: q, pageSize } });
+      const items =
+        Array.isArray(data)            ? data :
+        Array.isArray(data?.products)  ? data.products :
+        Array.isArray(data?.items)     ? data.items :
+        Array.isArray(data?.results)   ? data.results :
+        [];
+
+      // Filter for exact SKU match
+      return items.filter(p => p.sku?.toLowerCase() === q.toLowerCase());
+    });
+  }
+
+  /**
+   * Get a product by SKU (exact match)
+   * @param {string} sku - The SKU to find
+   * @returns {Promise<Object|null>} Product object or null if not found
+   */
+  async getProductBySku(sku) {
+    const products = await this.searchProductsBySku(sku);
+    return products.length > 0 ? products[0] : null;
+  }
+
+  // ===== NEW: Product Create/Update Methods =====
+
+  /**
+   * Create a new product in ShipStation
+   * @param {Object} product - Product data
+   * @returns {Promise<Object>} Created product
+   */
+  async createProduct(product) {
+    return this.retryWithBackoff(async () => {
+      const { data } = await this.client.post('/products', product);
+      return data;
+    });
+  }
+
+  /**
+   * Update an existing product in ShipStation
+   * @param {number} productId - ShipStation product ID
+   * @param {Object} updates - Fields to update
+   * @returns {Promise<Object>} Updated product
+   */
+  async updateProduct(productId, updates) {
+    return this.retryWithBackoff(async () => {
+      // ShipStation uses PUT to update products
+      const { data } = await this.client.put(`/products/${productId}`, updates);
+      return data;
+    });
+  }
+
+  /**
+   * Upsert a product by SKU - creates if not exists, updates if exists
+   * @param {Object} productData - Product data with required SKU field
+   * @returns {Promise<Object>} Result with created/updated product
+   */
+  async upsertProductBySku(productData) {
+    const { sku } = productData;
+    if (!sku) {
+      throw new Error('SKU is required for product upsert');
+    }
+
+    try {
+      // Check if product exists
+      const existing = await this.getProductBySku(sku);
+
+      if (existing) {
+        // Update existing product
+        console.log(`[ShipStation] Updating product SKU: ${sku} (ID: ${existing.productId})`);
+
+        const updatePayload = {
+          ...existing,
+          ...productData,
+          productId: existing.productId
+        };
+
+        const updated = await this.updateProduct(existing.productId, updatePayload);
+        return { action: 'updated', product: updated };
+      } else {
+        // Create new product
+        console.log(`[ShipStation] Creating product SKU: ${sku}`);
+        const created = await this.createProduct(productData);
+        return { action: 'created', product: created };
+      }
+    } catch (error) {
+      console.error(`[ShipStation] Upsert failed for SKU ${sku}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Batch upsert products with rate limiting
+   * @param {Array<Object>} products - Array of product data objects
+   * @param {Object} options - Options for batch processing
+   * @returns {Promise<Object>} Summary of results
+   */
+  async batchUpsertProducts(products, options = {}) {
+    const {
+      batchSize = 10,
+      delayMs = 500
+    } = options;
+
+    const results = {
+      total: products.length,
+      created: 0,
+      updated: 0,
+      failed: 0,
+      errors: [],
+      details: []
+    };
+
+    console.log(`[ShipStation] Batch upserting ${products.length} products...`);
+
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i];
+
+      try {
+        const result = await this.upsertProductBySku(product);
+
+        if (result.action === 'created') {
+          results.created++;
+        } else {
+          results.updated++;
+        }
+
+        results.details.push({
+          sku: product.sku,
+          action: result.action,
+          productId: result.product?.productId
+        });
+
+        // Progress logging
+        if ((i + 1) % batchSize === 0) {
+          console.log(`[ShipStation] Progress: ${i + 1}/${products.length}`);
+        }
+
+        // Rate limiting
+        if (i < products.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          sku: product.sku,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`[ShipStation] Batch complete: ${results.created} created, ${results.updated} updated, ${results.failed} failed`);
+
+    return results;
+  }
+
+  /**
+   * Sync warehouse location for a product by SKU
+   * This is the primary sync method for the Product Manager integration
+   * @param {string} sku - Product SKU
+   * @param {string} warehouseLocation - Warehouse location string
+   * @param {Object} additionalData - Optional additional fields to sync
+   * @returns {Promise<Object>} Sync result
+   */
+  async syncWarehouseLocation(sku, warehouseLocation, additionalData = {}) {
+    if (!sku) {
+      throw new Error('SKU is required');
+    }
+
+    const productData = {
+      sku,
+      warehouseLocation: warehouseLocation || '',
+      ...additionalData
+    };
+
+    // Add name if not provided (ShipStation requires it)
+    if (!productData.name) {
+      productData.name = sku;
+    }
+
+    return this.upsertProductBySku(productData);
+  }
+
+  /**
+   * Batch sync warehouse locations from variant data
+   * @param {Array<Object>} variants - Array of {sku, warehouse_location, ...}
+   * @returns {Promise<Object>} Sync results
+   */
+  async batchSyncWarehouseLocations(variants) {
+    const products = variants
+      .filter(v => v.sku && v.sku.trim())
+      .map(v => ({
+        sku: v.sku.trim(),
+        name: v.product_title ? `${v.product_title} - ${v.variant_title || 'Default'}` : v.sku,
+        warehouseLocation: v.warehouse_location || '',
+        // Include additional fields if available
+        ...(v.weight_grams && { weightOz: Math.round(v.weight_grams * 0.03527396195 * 100) / 100 }),
+        ...(v.harmonized_system_code && { customsTariffNo: v.harmonized_system_code }),
+        ...(v.country_code_of_origin && { customsCountryCode: v.country_code_of_origin }),
+        ...(v.barcode && { upc: v.barcode }),
+        active: true
+      }));
+
+    return this.batchUpsertProducts(products);
+  }
 }
 
 module.exports = { ShipStationAPI };

@@ -7,7 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7f7fb; color: #333; }
-    
+
     /* Layout with sidebar */
     .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
     .sidebar { background: #111827; color: #fff; padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
@@ -15,72 +15,94 @@
     .nav-link { display: block; color: #c7cbe1; text-decoration: none; padding: .5rem .6rem; border-radius: 6px; }
     .nav-link:hover { background: #1f2937; color: #fff; }
     .nav-link.active { background: #4f46e5; color: #fff; }
-    
+
     /* Main content area */
     .main-content { display: flex; flex-direction: column; }
-    
+
     /* Header */
     .header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
     .header h1 { font-size: 1.5rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .header-actions { display: flex; gap: 1rem; }
-    
+
     /* Buttons */
     .btn { padding: .5rem 1rem; border-radius: 6px; border: none; font-size: .9rem; cursor: pointer; transition: all .2s; font-weight: 500; }
     .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
     .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102,126,234,.3); }
     .btn-secondary { background: #fff; color: #666; border: 1px solid #e0e0e0; }
     .btn-secondary:hover { background: #f5f5f5; }
-    
+    .btn-sync { background: #10b981; color: #fff; }
+    .btn-sync:hover { background: #059669; }
+
     /* Controls */
     .controls { background: #fff; padding: 1.5rem 2rem; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
     .search-box { flex: 1; max-width: 400px; }
     .search-box input { width: 100%; padding: .5rem 1rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; }
     .filter-group { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-    
+
     /* Status bar */
     .status-bar { background: #fff; padding: 1rem 2rem; display: none; align-items: center; gap: 1rem; border-bottom: 1px solid #e0e0e0; }
     .status-bar.active { display: flex; }
     .status-bar.error { background: #fee; color: #c33; }
     .status-bar.success { background: #efe; color: #3c3; }
     .status-bar.warning { background: #ffeaa7; color: #d63031; }
-    
+
     /* Stats bar */
     .stats-bar { background: #fff; padding: 1rem 2rem; display: flex; gap: 2rem; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; }
     .stat-item { display: flex; flex-direction: column; }
     .stat-label { font-size: .8rem; color: #666; text-transform: uppercase; letter-spacing: .5px; }
     .stat-value { font-size: 1.5rem; font-weight: 600; color: #333; }
-    
+    .stat-divider { width: 1px; background: #e0e0e0; margin: 0 0.5rem; }
+
     /* Table */
-    .table-container { background: #fff; margin: 1rem; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
-    table { width: 100%; border-collapse: collapse; }
+    .table-container { background: #fff; margin: 1rem; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.05); overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 1400px; }
     thead { background: #f8f9fa; border-bottom: 2px solid #e0e0e0; }
-    th { padding: 1rem; text-align: left; font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #666; }
+    th { padding: 1rem; text-align: left; font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .5px; color: #666; white-space: nowrap; }
     td { padding: .75rem 1rem; border-bottom: 1px solid #f0f0f0; }
     tbody tr:hover { background: #f8f9fa; }
-    
+
     /* Editable cells */
     .editable { position: relative; cursor: text; }
     .editable:hover { background: #f0f4ff; }
     .editable input { width: 100%; padding: .25rem; border: 2px solid #667eea; border-radius: 4px; font-size: .9rem; }
     .cell-modified { background: #fffae6 !important; position: relative; }
     .cell-modified::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #f39c12; }
-    
-    /* SKU indicators */
+
+    /* Status indicators */
     .sku-error { background: #fee !important; color: #c33; }
-    .duplicate-indicator { display: inline-block; background: #dc3545; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; margin-left: .5rem; }
-    .missing-indicator { display: inline-block; background: #f39c12; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; margin-left: .5rem; }
-    
+    .duplicate-indicator { display: inline-block; background: #dc3545; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; }
+    .missing-indicator { display: inline-block; background: #f39c12; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; }
+    .dup-pick-indicator { display: inline-block; background: #e74c3c; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; }
+    .miss-pick-indicator { display: inline-block; background: #9b59b6; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; }
+    .miss-loc-indicator { display: inline-block; background: #3498db; color: #fff; padding: .2rem .5rem; border-radius: 4px; font-size: .75rem; }
+
+    /* Badge stack for multiple issues */
+    .badge-stack { display: flex; flex-direction: column; gap: 2px; }
+    .badge-stack > span { font-size: .7rem; padding: .15rem .4rem; }
+
     /* Loading */
     .loading { display: none; text-align: center; padding: 3rem; }
     .loading.active { display: block; }
     .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #667eea; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    
+
     /* Error panel */
     .error-panel { position: fixed; right: -400px; top: 0; width: 400px; height: 100vh; background: #fff; box-shadow: -2px 0 10px rgba(0,0,0,.1); transition: right .3s; z-index: 200; }
     .error-panel.open { right: 0; }
     .error-panel-header { padding: 1.5rem; background: #dc3545; color: #fff; display: flex; justify-content: space-between; align-items: center; }
     .error-panel-content { padding: 1rem; height: calc(100vh - 80px); overflow-y: auto; }
+
+    /* Sync banner */
+    .sync-banner { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; padding: 1rem 2rem; display: none; align-items: center; justify-content: space-between; }
+    .sync-banner.active { display: flex; }
+    .sync-banner-text { font-size: .95rem; }
+    .sync-banner .btn { background: #fff; color: #667eea; }
+    .sync-banner .btn:hover { background: #f0f4ff; }
+
+    /* Data source indicator */
+    .source-indicator { font-size: .75rem; padding: .2rem .5rem; border-radius: 4px; margin-left: 1rem; }
+    .source-indicator.db { background: #10b981; color: #fff; }
+    .source-indicator.shopify { background: #f39c12; color: #fff; }
   </style>
 </head>
 <body>
@@ -100,13 +122,22 @@
     <div class="main-content">
       <!-- Header -->
       <div class="header">
-        <h1>Shopify Product Manager</h1>
+        <div style="display:flex;align-items:center;">
+          <h1>Shopify Product Manager</h1>
+          <span id="sourceIndicator" class="source-indicator db">DB</span>
+        </div>
         <div class="header-actions">
           <button class="btn btn-secondary" onclick="showErrors()">
-            Error Log 
+            Error Log
             <span id="errorCount" style="display:none;background:#dc3545;color:#fff;padding:2px 6px;border-radius:10px;margin-left:5px;">0</span>
           </button>
         </div>
+      </div>
+
+      <!-- Sync Banner (shown when DB is empty) -->
+      <div id="syncBanner" class="sync-banner">
+        <span class="sync-banner-text" id="syncBannerText">Database is empty. Sync products from Shopify to get started.</span>
+        <button class="btn" onclick="syncFromShopify()">Sync Now</button>
       </div>
 
       <!-- Status Bar -->
@@ -124,14 +155,29 @@
           <span class="stat-label">Unique SKUs</span>
           <span class="stat-value" id="uniqueSkus">0</span>
         </div>
+        <div class="stat-divider"></div>
         <div class="stat-item">
-          <span class="stat-label">Duplicate SKUs</span>
+          <span class="stat-label">Dup. SKUs</span>
           <span class="stat-value" id="duplicateSkus" style="color:#dc3545;">0</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">Missing SKUs</span>
           <span class="stat-value" id="missingSkus" style="color:#f39c12;">0</span>
         </div>
+        <div class="stat-divider"></div>
+        <div class="stat-item">
+          <span class="stat-label">Dup. Pick #</span>
+          <span class="stat-value" id="duplicatePicks" style="color:#e74c3c;">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Missing Pick #</span>
+          <span class="stat-value" id="missingPicks" style="color:#9b59b6;">0</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Missing Location</span>
+          <span class="stat-value" id="missingLocations" style="color:#3498db;">0</span>
+        </div>
+        <div class="stat-divider"></div>
         <div class="stat-item">
           <span class="stat-label">Modified</span>
           <span class="stat-value" id="modifiedCount" style="color:#f39c12;">0</span>
@@ -144,24 +190,28 @@
           <input type="text" id="searchInput" placeholder="Search products, SKUs, variants..." onkeyup="filterTable()">
         </div>
         <div class="filter-group">
-          <label><input type="checkbox" id="showDuplicatesOnly"> Show duplicates only</label>
-          <label><input type="checkbox" id="showMissingOnly"> Show missing only</label>
-          <label><input type="checkbox" id="showModifiedOnly"> Show modified only</label>
+          <label><input type="checkbox" id="showDuplicatesOnly"> Dup SKUs</label>
+          <label><input type="checkbox" id="showMissingOnly"> Missing SKUs</label>
+          <label><input type="checkbox" id="showDupPicksOnly"> Dup Pick #</label>
+          <label><input type="checkbox" id="showMissingPicksOnly"> Missing Pick #</label>
+          <label><input type="checkbox" id="showMissingLocsOnly"> Missing Location</label>
+          <label><input type="checkbox" id="showModifiedOnly"> Modified</label>
         </div>
         <div class="header-actions">
-          <button class="btn btn-secondary" onclick="generateSkusForDuplicates()">🤖 Generate SKUs for duplicates</button>
-          <button class="btn btn-secondary" onclick="generateSkusForMissing()">✨ Generate SKUs for missing</button>
-          <button class="btn btn-secondary" onclick="refreshProducts()">🔄 Refresh from Shopify</button>
-          <button class="btn btn-primary" id="saveBtn" onclick="saveChanges()">💾 Save Changes to Shopify</button>
+          <button class="btn btn-sync" onclick="syncFromShopify()">Sync from Shopify</button>
+          <button class="btn btn-secondary" onclick="syncToShipStation()">Sync to ShipStation</button>
+          <button class="btn btn-secondary" onclick="generateSkusForDuplicates()">Gen SKUs (dups)</button>
+          <button class="btn btn-secondary" onclick="generateSkusForMissing()">Gen SKUs (missing)</button>
+          <button class="btn btn-primary" id="saveBtn" onclick="saveChanges()">Save Changes</button>
           <input type="file" id="hsMapFile" accept=".csv" style="display:none">
-          <button class="btn btn-secondary" onclick="promptLoadHsMap()">🗺️ Load HS Map CSV</button>
+          <button class="btn btn-secondary" onclick="promptLoadHsMap()">Load HS Map</button>
         </div>
       </div>
 
       <!-- Loading -->
       <div id="loading" class="loading">
         <div class="spinner"></div>
-        <p style="margin-top:1rem;color:#666;">Loading products from Shopify...</p>
+        <p style="margin-top:1rem;color:#666;" id="loadingText">Loading products from database...</p>
       </div>
 
       <!-- Product Table -->
@@ -174,6 +224,8 @@
               <th>Product Title</th>
               <th>Variant</th>
               <th>SKU</th>
+              <th>Pick #</th>
+              <th>Location</th>
               <th>Price</th>
               <th>Inventory</th>
               <th>Weight (g)</th>
@@ -189,7 +241,7 @@
       <div id="errorPanel" class="error-panel">
         <div class="error-panel-header">
           <h3>Error Log</h3>
-          <button class="btn btn-secondary" style="background:#fff;color:#333" onclick="closeErrors()">✕</button>
+          <button class="btn btn-secondary" style="background:#fff;color:#333" onclick="closeErrors()">X</button>
         </div>
         <div class="error-panel-content" id="errorPanelContent"></div>
       </div>

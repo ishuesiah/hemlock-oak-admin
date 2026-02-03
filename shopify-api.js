@@ -1,8 +1,22 @@
-// shopify-api.js - OPTIMIZED - Extended version with customer methods + ORDER NOTES
+// shopify-api.js - OPTIMIZED - Extended version with customer methods + ORDER NOTES + METAFIELDS
 const axios = require('axios');
 const dotenv = require('dotenv');
 
 dotenv.config();
+
+// Metafield configuration - configurable via environment variables
+const METAFIELD_CONFIG = {
+  pick_number: {
+    namespace: process.env.PICK_NUMBER_METAFIELD_NAMESPACE || 'custom',
+    key: process.env.PICK_NUMBER_METAFIELD_KEY || 'pick_number',
+    type: process.env.PICK_NUMBER_METAFIELD_TYPE || 'single_line_text_field'
+  },
+  warehouse_location: {
+    namespace: process.env.WAREHOUSE_LOCATION_METAFIELD_NAMESPACE || 'custom',
+    key: process.env.WAREHOUSE_LOCATION_METAFIELD_KEY || 'warehouse_location',
+    type: process.env.WAREHOUSE_LOCATION_METAFIELD_TYPE || 'single_line_text_field'
+  }
+};
 
 class ShopifyAPI {
   constructor() {
@@ -22,9 +36,21 @@ class ShopifyAPI {
       }
     });
 
+    // GraphQL client for efficient metafield queries
+    this.graphqlClient = axios.create({
+      baseURL: `https://${this.store}/admin/api/${this.apiVersion}`,
+      headers: {
+        'X-Shopify-Access-Token': this.accessToken,
+        'Content-Type': 'application/json'
+      }
+    });
+
     // Shopify REST: ~2 rps; keep it gentle
     this.lastRequestTime = 0;
     this.minRequestInterval = 550;
+
+    // Metafield configuration
+    this.metafieldConfig = METAFIELD_CONFIG;
   }
 
   async rateLimit() {
@@ -447,6 +473,426 @@ class ShopifyAPI {
       missing
     };
   }
+
+  // ============================================================================
+  // METAFIELD METHODS (NEW - For Pick Number and Warehouse Location)
+  // ============================================================================
+
+  /**
+   * GraphQL query to fetch variant metafields efficiently
+   * Uses cursor-based pagination for large datasets
+   */
+  async fetchAllVariantMetafields() {
+    console.log('[Shopify API] Fetching variant metafields via GraphQL...');
+    const startTime = Date.now();
+
+    const { namespace: pickNs, key: pickKey } = this.metafieldConfig.pick_number;
+    const { namespace: locNs, key: locKey } = this.metafieldConfig.warehouse_location;
+
+    const metafieldsMap = new Map(); // variantId -> { pick_number, warehouse_location, pick_metafield_id, location_metafield_id }
+    let hasNextPage = true;
+    let cursor = null;
+    let pageCount = 0;
+
+    while (hasNextPage) {
+      await this.rateLimit();
+
+      const query = `
+        query GetVariantMetafields($cursor: String) {
+          productVariants(first: 250, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            edges {
+              node {
+                id
+                legacyResourceId
+                sku
+                metafields(first: 10, keys: ["${pickNs}.${pickKey}", "${locNs}.${locKey}"]) {
+                  edges {
+                    node {
+                      id
+                      namespace
+                      key
+                      value
+                      legacyResourceId
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      try {
+        const response = await this.graphqlClient.post('/graphql.json', {
+          query,
+          variables: { cursor }
+        });
+
+        const data = response.data.data?.productVariants;
+        if (!data) {
+          console.error('[Shopify API] GraphQL response missing productVariants:', response.data);
+          break;
+        }
+
+        for (const edge of data.edges) {
+          const variant = edge.node;
+          const variantId = variant.legacyResourceId;
+
+          const metafieldData = {
+            pick_number: null,
+            warehouse_location: null,
+            pick_metafield_id: null,
+            location_metafield_id: null
+          };
+
+          for (const mfEdge of variant.metafields.edges) {
+            const mf = mfEdge.node;
+            if (mf.namespace === pickNs && mf.key === pickKey) {
+              metafieldData.pick_number = mf.value;
+              metafieldData.pick_metafield_id = mf.legacyResourceId;
+            } else if (mf.namespace === locNs && mf.key === locKey) {
+              metafieldData.warehouse_location = mf.value;
+              metafieldData.location_metafield_id = mf.legacyResourceId;
+            }
+          }
+
+          metafieldsMap.set(String(variantId), metafieldData);
+        }
+
+        hasNextPage = data.pageInfo.hasNextPage;
+        cursor = data.pageInfo.endCursor;
+        pageCount++;
+
+        if (pageCount % 5 === 0) {
+          console.log(`[Shopify API] Fetched ${metafieldsMap.size} variant metafields (page ${pageCount})...`);
+        }
+      } catch (error) {
+        console.error('[Shopify API] GraphQL metafield fetch error:', error.response?.data || error.message);
+        throw error;
+      }
+    }
+
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`[Shopify API] Fetched metafields for ${metafieldsMap.size} variants in ${elapsed}s`);
+
+    return metafieldsMap;
+  }
+
+  /**
+   * Get all products with inventory AND metafields
+   * This is the comprehensive data fetch for the product database
+   */
+  async getAllProductsWithMetafields(status = 'active') {
+    console.log('[Shopify API] Fetching all products with inventory and metafields...');
+    const startTime = Date.now();
+
+    // Step 1: Get products with inventory (existing method)
+    const products = await this.getAllProductsWithInventory(status);
+    console.log(`[Shopify API] Fetched ${products.length} products with ${products.reduce((s, p) => s + p.variants.length, 0)} variants`);
+
+    // Step 2: Fetch all variant metafields via GraphQL
+    const metafieldsMap = await this.fetchAllVariantMetafields();
+
+    // Step 3: Merge metafields into products
+    let metafieldsAttached = 0;
+    for (const product of products) {
+      for (const variant of product.variants) {
+        const mf = metafieldsMap.get(String(variant.id));
+        if (mf) {
+          variant.pick_number = mf.pick_number;
+          variant.warehouse_location = mf.warehouse_location;
+          variant.pick_metafield_id = mf.pick_metafield_id;
+          variant.location_metafield_id = mf.location_metafield_id;
+          metafieldsAttached++;
+        } else {
+          variant.pick_number = null;
+          variant.warehouse_location = null;
+          variant.pick_metafield_id = null;
+          variant.location_metafield_id = null;
+        }
+      }
+    }
+
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    console.log(`[Shopify API] Complete: ${products.length} products, ${metafieldsAttached} variants with metafields, in ${elapsed}s`);
+
+    return products;
+  }
+
+  /**
+   * Get metafields for a single variant
+   */
+  async getVariantMetafields(variantId) {
+    await this.rateLimit();
+
+    const { namespace: pickNs, key: pickKey } = this.metafieldConfig.pick_number;
+    const { namespace: locNs, key: locKey } = this.metafieldConfig.warehouse_location;
+
+    const query = `
+      query GetVariantMetafields($id: ID!) {
+        productVariant(id: $id) {
+          id
+          legacyResourceId
+          metafields(first: 10, keys: ["${pickNs}.${pickKey}", "${locNs}.${locKey}"]) {
+            edges {
+              node {
+                id
+                namespace
+                key
+                value
+                legacyResourceId
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await this.graphqlClient.post('/graphql.json', {
+        query,
+        variables: { id: `gid://shopify/ProductVariant/${variantId}` }
+      });
+
+      const variant = response.data.data?.productVariant;
+      if (!variant) return null;
+
+      const result = {
+        pick_number: null,
+        warehouse_location: null,
+        pick_metafield_id: null,
+        location_metafield_id: null
+      };
+
+      for (const edge of variant.metafields.edges) {
+        const mf = edge.node;
+        if (mf.namespace === pickNs && mf.key === pickKey) {
+          result.pick_number = mf.value;
+          result.pick_metafield_id = mf.legacyResourceId;
+        } else if (mf.namespace === locNs && mf.key === locKey) {
+          result.warehouse_location = mf.value;
+          result.location_metafield_id = mf.legacyResourceId;
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('[Shopify API] Error fetching variant metafields:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Update or create a metafield for a variant
+   * @param {string} variantId - Shopify variant ID
+   * @param {string} fieldName - 'pick_number' or 'warehouse_location'
+   * @param {string} value - The value to set
+   * @param {string|null} existingMetafieldId - If known, the metafield ID to update
+   * @returns {Object} Updated metafield data with id
+   */
+  async setVariantMetafield(variantId, fieldName, value, existingMetafieldId = null) {
+    await this.rateLimit();
+
+    const config = this.metafieldConfig[fieldName];
+    if (!config) {
+      throw new Error(`Unknown metafield: ${fieldName}`);
+    }
+
+    const { namespace, key, type } = config;
+
+    // If value is empty/null, delete the metafield if it exists
+    if (!value || value.trim() === '') {
+      if (existingMetafieldId) {
+        return await this.deleteMetafield(existingMetafieldId);
+      }
+      return { deleted: true, metafield_id: null };
+    }
+
+    // Use GraphQL mutation for creating/updating metafields
+    const mutation = `
+      mutation SetMetafield($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            id
+            namespace
+            key
+            value
+            legacyResourceId
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await this.graphqlClient.post('/graphql.json', {
+        query: mutation,
+        variables: {
+          metafields: [{
+            ownerId: `gid://shopify/ProductVariant/${variantId}`,
+            namespace,
+            key,
+            type,
+            value: String(value).trim()
+          }]
+        }
+      });
+
+      const result = response.data.data?.metafieldsSet;
+      if (result?.userErrors?.length > 0) {
+        throw new Error(result.userErrors.map(e => e.message).join(', '));
+      }
+
+      const metafield = result?.metafields?.[0];
+      return {
+        success: true,
+        metafield_id: metafield?.legacyResourceId,
+        value: metafield?.value
+      };
+    } catch (error) {
+      console.error(`[Shopify API] Error setting metafield ${fieldName}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a metafield by ID
+   */
+  async deleteMetafield(metafieldId) {
+    await this.rateLimit();
+
+    try {
+      await this.client.delete(`/metafields/${metafieldId}.json`);
+      return { deleted: true, metafield_id: null };
+    } catch (error) {
+      // If 404, metafield already deleted
+      if (error.response?.status === 404) {
+        return { deleted: true, metafield_id: null };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Update variant with all fields including metafields
+   * This is the comprehensive update method for the product database
+   */
+  async updateVariantWithMetafields(update) {
+    const {
+      id: variantId,
+      sku,
+      price,
+      weight,
+      harmonized_system_code,
+      country_code_of_origin,
+      pick_number,
+      warehouse_location,
+      pick_metafield_id,
+      location_metafield_id
+    } = update;
+
+    const results = {
+      variant: { updated: false },
+      inventory: { updated: false },
+      metafields: { pick_number: null, warehouse_location: null }
+    };
+
+    try {
+      // 1. Update core variant fields (sku, price, weight)
+      const needsVariantUpdate = (sku !== undefined) || (price !== undefined) || (weight !== undefined);
+      if (needsVariantUpdate) {
+        await this.rateLimit();
+        const payload = { variant: { id: variantId } };
+        if (sku !== undefined) payload.variant.sku = sku;
+        if (price !== undefined) payload.variant.price = parseFloat(price);
+        if (weight !== undefined) {
+          payload.variant.weight = parseFloat(weight);
+          payload.variant.weight_unit = 'g';
+        }
+        await this.client.put(`/variants/${variantId}.json`, payload);
+        results.variant.updated = true;
+      }
+
+      // 2. Update inventory fields (HS code, country of origin)
+      const needsInventoryUpdate = (harmonized_system_code !== undefined) || (country_code_of_origin !== undefined);
+      if (needsInventoryUpdate) {
+        await this.rateLimit();
+        const vResp = await this.client.get(`/variants/${variantId}.json`);
+        const inventoryItemId = vResp.data?.variant?.inventory_item_id;
+        if (inventoryItemId) {
+          const invPayload = { inventory_item: { id: inventoryItemId } };
+          if (harmonized_system_code !== undefined) invPayload.inventory_item.harmonized_system_code = harmonized_system_code || '';
+          if (country_code_of_origin !== undefined) invPayload.inventory_item.country_code_of_origin = country_code_of_origin || '';
+
+          await this.rateLimit();
+          await this.client.put(`/inventory_items/${inventoryItemId}.json`, invPayload);
+          results.inventory.updated = true;
+        }
+      }
+
+      // 3. Update metafields (pick number, warehouse location)
+      if (pick_number !== undefined) {
+        const mfResult = await this.setVariantMetafield(variantId, 'pick_number', pick_number, pick_metafield_id);
+        results.metafields.pick_number = mfResult;
+      }
+
+      if (warehouse_location !== undefined) {
+        const mfResult = await this.setVariantMetafield(variantId, 'warehouse_location', warehouse_location, location_metafield_id);
+        results.metafields.warehouse_location = mfResult;
+      }
+
+      return { success: true, ...results };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.errors || error.message,
+        ...results
+      };
+    }
+  }
+
+  /**
+   * Batch update variants with metafields
+   * Extends the existing updateVariants method to include metafield updates
+   */
+  async updateVariantsWithMetafields(updates) {
+    const results = { updated: 0, failed: 0, errors: [], details: [] };
+
+    for (const update of updates) {
+      try {
+        const result = await this.updateVariantWithMetafields(update);
+        if (result.success) {
+          results.updated++;
+          results.details.push({
+            variantId: update.id,
+            success: true,
+            ...result
+          });
+        } else {
+          results.failed++;
+          results.errors.push({
+            variantId: update.id,
+            error: result.error
+          });
+        }
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          variantId: update.id,
+          error: error.response?.data?.errors || error.message
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
-module.exports = { ShopifyAPI };
+module.exports = { ShopifyAPI, METAFIELD_CONFIG };

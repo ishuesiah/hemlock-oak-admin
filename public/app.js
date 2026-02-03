@@ -1,4 +1,4 @@
-// public/app.js
+// public/app.js - WITH PICK NUMBER AND WAREHOUSE LOCATION SUPPORT
 (() => {
   'use strict';
 
@@ -6,9 +6,12 @@
   let products = [];
   let modifiedData = new Map();
   let duplicateSkus = new Set();
+  let duplicatePickNumbers = new Set();
   let selectedIds = new Set(); // rows chosen for Save
   let baseline = new Map();    // ORIGINAL values at last refresh (for accurate diffing)
-  let HS_MAP = new Map();      // HS → { desc, country }
+  let HS_MAP = new Map();      // HS -> { desc, country }
+  let dataSource = 'db';       // 'db' or 'shopify'
+  let needsSync = false;
 
   // Expose functions used by inline HTML (buttons/onclicks)
   window.refreshProducts = refreshProducts;
@@ -21,23 +24,37 @@
   window.generateSkusForDuplicates = generateSkusForDuplicates;
   window.generateSkusForMissing = generateSkusForMissing;
   window.exportShipStationCSV = exportShipStationCSV;
-  window.promptLoadHsMap = promptLoadHsMap;   // optional UI hook
-  window.HS_MAP = HS_MAP;                     // handy for debugging in DevTools
+  window.promptLoadHsMap = promptLoadHsMap;
+  window.syncFromShopify = syncFromShopify;
+  window.syncToShipStation = syncToShipStation;
+  window.HS_MAP = HS_MAP;
 
   // ===== Boot ===============================================================
   document.addEventListener('DOMContentLoaded', () => {
-    const dupCb = document.getElementById('showDuplicatesOnly');
-    const missCb = document.getElementById('showMissingOnly');
-    const modCb = document.getElementById('showModifiedOnly');
+    // Setup filter checkboxes (mutually exclusive)
+    const filterCheckboxes = [
+      'showDuplicatesOnly',
+      'showMissingOnly',
+      'showDupPicksOnly',
+      'showMissingPicksOnly',
+      'showMissingLocsOnly',
+      'showModifiedOnly'
+    ];
 
-    // Make them mutually exclusive (tab-like)
     const syncTabs = (changed) => {
-      if (changed === dupCb && dupCb.checked) { missCb.checked = false; modCb.checked = false; }
-      if (changed === missCb && missCb.checked){ dupCb.checked = false; modCb.checked = false; }
-      if (changed === modCb && modCb.checked) { dupCb.checked = false; missCb.checked = false; }
+      filterCheckboxes.forEach(id => {
+        const cb = document.getElementById(id);
+        if (cb && cb !== changed && changed.checked) {
+          cb.checked = false;
+        }
+      });
       filterTable();
     };
-    [dupCb, missCb, modCb].forEach(cb => cb && cb.addEventListener('change', () => syncTabs(cb)));
+
+    filterCheckboxes.forEach(id => {
+      const cb = document.getElementById(id);
+      if (cb) cb.addEventListener('change', () => syncTabs(cb));
+    });
 
     // Try loading any cached HS map
     (function bootstrapHsMapFromStorage() {
@@ -49,6 +66,7 @@
 
     refreshProducts();
   });
+
   async function fetchJSON(url, opts = {}) {
     const res = await fetch(url, {
       credentials: 'same-origin',
@@ -60,31 +78,22 @@
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      // HTML came back (likely a redirect to /login)
-      throw new Error(`HTTP ${res.status} — non-JSON response: ${text.slice(0,120)}`);
+      throw new Error(`HTTP ${res.status} - non-JSON response: ${text.slice(0,120)}`);
     }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
   }
-  
-  // wherever you load products:
-  async function loadProducts() {
-    try {
-      const { products, duplicates } = await fetchJSON('/api/products');
-      // ... your existing render code here ...
-    } catch (e) {
-      // show the message in your status bar
-      showStatus(`Failed to load products: ${e.message}`, 'error');
-    }
-  }
-  
+
   // ===== Data refresh & render =============================================
   async function refreshProducts() {
     const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
     const statusBar = document.getElementById('statusBar');
     const statusMessage = document.getElementById('statusMessage');
+    const syncBanner = document.getElementById('syncBanner');
 
     loading.classList.add('active');
+    loadingText.textContent = 'Loading products from database...';
     statusBar.className = 'status-bar';
 
     try {
@@ -92,9 +101,31 @@
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
-      products = data.products;
-      duplicateSkus = new Set(data.duplicates);
+      products = data.products || [];
+      duplicateSkus = new Set(data.duplicates || []);
+      duplicatePickNumbers = new Set(data.duplicatePickNumbers || []);
+      dataSource = data.stats?.source || 'db';
+      needsSync = data.needsSync || false;
       modifiedData.clear();
+
+      // Update source indicator
+      const sourceIndicator = document.getElementById('sourceIndicator');
+      if (sourceIndicator) {
+        sourceIndicator.textContent = dataSource.toUpperCase();
+        sourceIndicator.className = `source-indicator ${dataSource}`;
+      }
+
+      // Show/hide sync banner
+      if (syncBanner) {
+        if (needsSync || products.length === 0) {
+          syncBanner.classList.add('active');
+          if (data.stats?.message) {
+            document.getElementById('syncBannerText').textContent = data.stats.message;
+          }
+        } else {
+          syncBanner.classList.remove('active');
+        }
+      }
 
       // Build ORIGINAL baseline snapshot for accurate diffs later
       baseline.clear();
@@ -104,7 +135,9 @@
           price: (v.price === undefined || v.price === null) ? '' : String(v.price),
           weight: (v.weight === undefined || v.weight === null) ? '' : String(v.weight),
           harmonized_system_code: (v.harmonized_system_code ?? ''),
-          country_code_of_origin: (v.country_code_of_origin ?? '')
+          country_code_of_origin: (v.country_code_of_origin ?? ''),
+          pick_number: (v.pick_number ?? ''),
+          warehouse_location: (v.warehouse_location ?? '')
         });
       }));
 
@@ -112,7 +145,7 @@
       updateStats();
 
       statusBar.className = 'status-bar active success';
-      statusMessage.textContent = `Loaded ${products.length} products successfully`;
+      statusMessage.textContent = `Loaded ${products.length} products (${products.reduce((s, p) => s + p.variants.length, 0)} variants) from ${dataSource}`;
       setTimeout(() => { statusBar.className = 'status-bar'; }, 3000);
     } catch (error) {
       statusBar.className = 'status-bar active error';
@@ -129,22 +162,28 @@
     products.forEach(product => {
       product.variants.forEach(variant => {
         const row = tbody.insertRow();
-        const variantId = String(variant.id); // normalize to string
+        const variantId = String(variant.id);
 
         // Staged (unsaved) edits for this variant
         const staged = modifiedData.get(variantId) || {};
         const getVal = (field, fallback = '') =>
           (staged[field] !== undefined ? staged[field] : (variant[field] ?? fallback));
 
-        const rawSku  = getVal('sku', '') || '';
-        const sku     = String(rawSku).trim();
-        const price   = getVal('price', '') === '' ? '' : String(getVal('price'));
-        const weight  = getVal('weight', '') === '' ? '' : String(getVal('weight'));
-        const hs      = getVal('harmonized_system_code', '') || '';
+        const rawSku = getVal('sku', '') || '';
+        const sku = String(rawSku).trim();
+        const price = getVal('price', '') === '' ? '' : String(getVal('price'));
+        const weight = getVal('weight', '') === '' ? '' : String(getVal('weight'));
+        const hs = getVal('harmonized_system_code', '') || '';
         const country = getVal('country_code_of_origin', '') || '';
+        const pickNumber = getVal('pick_number', '') || '';
+        const warehouseLocation = getVal('warehouse_location', '') || '';
 
-        const isDuplicate = !!sku && duplicateSkus.has(sku);
-        const isMissing   = !sku;
+        // Status flags
+        const isDuplicateSku = !!sku && duplicateSkus.has(sku);
+        const isMissingSku = !sku;
+        const isDuplicatePick = !!pickNumber && duplicatePickNumbers.has(pickNumber);
+        const isMissingPick = !pickNumber;
+        const isMissingLocation = !warehouseLocation;
 
         // Select (persist checked state)
         const checkCell = row.insertCell();
@@ -153,10 +192,20 @@
         const cb = checkCell.querySelector('input');
         if (selectedIds.has(variantId)) cb.checked = true;
 
-        // Status
+        // Status badges (stacked if multiple)
         const statusCell = row.insertCell();
-        if (isMissing)   statusCell.innerHTML = '<span class="missing-indicator">MISSING</span>';
-        else if (isDuplicate) statusCell.innerHTML = '<span class="duplicate-indicator">DUPLICATE</span>';
+        const badges = [];
+        if (isMissingSku) badges.push('<span class="missing-indicator">NO SKU</span>');
+        else if (isDuplicateSku) badges.push('<span class="duplicate-indicator">DUP SKU</span>');
+        if (isDuplicatePick) badges.push('<span class="dup-pick-indicator">DUP PICK</span>');
+        if (isMissingPick) badges.push('<span class="miss-pick-indicator">NO PICK</span>');
+        if (isMissingLocation) badges.push('<span class="miss-loc-indicator">NO LOC</span>');
+
+        if (badges.length > 1) {
+          statusCell.innerHTML = `<div class="badge-stack">${badges.join('')}</div>`;
+        } else if (badges.length === 1) {
+          statusCell.innerHTML = badges[0];
+        }
 
         // Titles
         row.insertCell().textContent = product.title;
@@ -164,10 +213,24 @@
 
         // SKU (editable)
         const skuCell = row.insertCell();
-        skuCell.className = (isDuplicate || isMissing) ? 'editable sku-error' : 'editable';
+        skuCell.className = (isDuplicateSku || isMissingSku) ? 'editable sku-error' : 'editable';
         skuCell.innerHTML =
           `<span onclick="makeEditable(this, '${variantId}', 'sku')" data-variant-id="${variantId}" data-field="sku" class="editable-span">${sku}</span>`;
         if (staged.sku !== undefined) skuCell.classList.add('cell-modified');
+
+        // Pick Number (editable)
+        const pickCell = row.insertCell();
+        pickCell.className = isDuplicatePick ? 'editable sku-error' : 'editable';
+        pickCell.innerHTML =
+          `<span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>`;
+        if (staged.pick_number !== undefined) pickCell.classList.add('cell-modified');
+
+        // Warehouse Location (editable)
+        const locCell = row.insertCell();
+        locCell.className = 'editable';
+        locCell.innerHTML =
+          `<span onclick="makeEditable(this, '${variantId}', 'warehouse_location')">${warehouseLocation}</span>`;
+        if (staged.warehouse_location !== undefined) locCell.classList.add('cell-modified');
 
         // Price (editable)
         const priceCell = row.insertCell();
@@ -201,14 +264,20 @@
         if (staged.country_code_of_origin !== undefined) countryCell.classList.add('cell-modified');
 
         // Row metadata for search/filter
-        row.dataset.variantId    = variantId;
+        row.dataset.variantId = variantId;
         row.dataset.productTitle = product.title.toLowerCase();
         row.dataset.variantTitle = (variant.title || '').toLowerCase();
-        row.dataset.sku          = (sku || '').toLowerCase();
+        row.dataset.sku = (sku || '').toLowerCase();
+        row.dataset.pickNumber = (pickNumber || '').toLowerCase();
+        row.dataset.warehouseLocation = (warehouseLocation || '').toLowerCase();
+        row.dataset.isDuplicateSku = isDuplicateSku ? '1' : '0';
+        row.dataset.isMissingSku = isMissingSku ? '1' : '0';
+        row.dataset.isDuplicatePick = isDuplicatePick ? '1' : '0';
+        row.dataset.isMissingPick = isMissingPick ? '1' : '0';
+        row.dataset.isMissingLocation = isMissingLocation ? '1' : '0';
       });
     });
 
-    // Re-apply filters after any render
     filterTable();
   }
 
@@ -225,7 +294,7 @@
 
     const input = document.createElement('input');
     input.type = (field === 'price' || field === 'weight') ? 'number' : 'text';
-    if (field === 'price')  input.step = '0.01';
+    if (field === 'price') input.step = '0.01';
     if (field === 'weight') input.step = '1';
 
     if (field === 'price' || field === 'weight') {
@@ -235,7 +304,6 @@
       input.value = raw;
     }
 
-    // Commit on blur and on Enter
     input.onblur = () => saveEdit(input, span, String(variantId), field);
     input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } };
 
@@ -247,15 +315,13 @@
   }
 
   function patchLocalVariant(variantId, field, value) {
-    // Keep UI responsive by reflecting staged values in the local table,
-    // but remember: diffs are computed against 'baseline' (not 'products').
     const vid = String(variantId);
     for (const p of products) {
       for (const v of p.variants) {
         if (String(v.id) === vid) {
           if (field === 'price') v.price = (value === '' ? '' : Number(value));
           else if (field === 'weight') v.weight = (value === '' ? '' : Number(value));
-          else v[field] = value; // sku, harmonized_system_code, country_code_of_origin
+          else v[field] = value;
           return;
         }
       }
@@ -289,16 +355,17 @@
     cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', '${field}')">${display}</span>`;
     cell.classList.add('cell-modified');
 
-    // If SKU changed, recompute duplicates and rerender (filters reapplied)
-    if (field === 'sku') {
-      recomputeDuplicateSet();
+    // Recompute duplicates if SKU or pick number changed
+    if (field === 'sku' || field === 'pick_number') {
+      recomputeDuplicates();
       renderTable();
     }
 
     updateStats();
   }
 
-  function recomputeDuplicateSet() {
+  function recomputeDuplicates() {
+    // SKU duplicates
     const skuCounts = {};
     products.forEach(p => p.variants.forEach(v => {
       const vid = String(v.id);
@@ -310,37 +377,80 @@
     }));
     duplicateSkus.clear();
     Object.entries(skuCounts).forEach(([s, c]) => { if (c > 1) duplicateSkus.add(s); });
+
+    // Pick number duplicates
+    const pickCounts = {};
+    products.forEach(p => p.variants.forEach(v => {
+      const vid = String(v.id);
+      const pn = (modifiedData.has(vid) && modifiedData.get(vid).pick_number !== undefined)
+        ? (modifiedData.get(vid).pick_number || '')
+        : (v.pick_number || '');
+      const norm = String(pn || '').trim();
+      if (norm) pickCounts[norm] = (pickCounts[norm] || 0) + 1;
+    }));
+    duplicatePickNumbers.clear();
+    Object.entries(pickCounts).forEach(([pn, c]) => { if (c > 1) duplicatePickNumbers.add(pn); });
   }
 
   function updateStats() {
     const uniqueSkusSet = new Set();
     const skuCounts = {};
-    let missing = 0;
+    const pickCounts = {};
+    let missingSku = 0;
+    let missingPick = 0;
+    let missingLocation = 0;
 
     products.forEach(product => {
       product.variants.forEach(variant => {
         const vid = String(variant.id);
+
+        // SKU
         let sku = variant.sku;
         if (modifiedData.has(vid) && modifiedData.get(vid).sku !== undefined) {
           sku = modifiedData.get(vid).sku;
         }
-        const norm = String(sku || '').trim();
-        if (!norm) {
-          missing++;
+        const normSku = String(sku || '').trim();
+        if (!normSku) {
+          missingSku++;
         } else {
-          uniqueSkusSet.add(norm);
-          skuCounts[norm] = (skuCounts[norm] || 0) + 1;
+          uniqueSkusSet.add(normSku);
+          skuCounts[normSku] = (skuCounts[normSku] || 0) + 1;
+        }
+
+        // Pick number
+        let pickNum = variant.pick_number;
+        if (modifiedData.has(vid) && modifiedData.get(vid).pick_number !== undefined) {
+          pickNum = modifiedData.get(vid).pick_number;
+        }
+        const normPick = String(pickNum || '').trim();
+        if (!normPick) {
+          missingPick++;
+        } else {
+          pickCounts[normPick] = (pickCounts[normPick] || 0) + 1;
+        }
+
+        // Warehouse location
+        let loc = variant.warehouse_location;
+        if (modifiedData.has(vid) && modifiedData.get(vid).warehouse_location !== undefined) {
+          loc = modifiedData.get(vid).warehouse_location;
+        }
+        if (!String(loc || '').trim()) {
+          missingLocation++;
         }
       });
     });
 
     const totalVariants = products.reduce((sum, p) => sum + p.variants.length, 0);
-    const duplicateCount = Object.values(skuCounts).filter(count => count > 1).length;
+    const duplicateSkuCount = Object.values(skuCounts).filter(count => count > 1).length;
+    const duplicatePickCount = Object.values(pickCounts).filter(count => count > 1).length;
 
     document.getElementById('totalProducts').textContent = totalVariants;
     document.getElementById('uniqueSkus').textContent = uniqueSkusSet.size;
-    document.getElementById('duplicateSkus').textContent = duplicateCount;
-    document.getElementById('missingSkus').textContent = missing;
+    document.getElementById('duplicateSkus').textContent = duplicateSkuCount;
+    document.getElementById('missingSkus').textContent = missingSku;
+    document.getElementById('duplicatePicks').textContent = duplicatePickCount;
+    document.getElementById('missingPicks').textContent = missingPick;
+    document.getElementById('missingLocations').textContent = missingLocation;
     document.getElementById('modifiedCount').textContent = modifiedData.size;
   }
 
@@ -348,14 +458,20 @@
     const searchValue = document.getElementById('searchInput').value.toLowerCase();
     const showDuplicates = document.getElementById('showDuplicatesOnly').checked;
     const showMissing = document.getElementById('showMissingOnly').checked;
+    const showDupPicks = document.getElementById('showDupPicksOnly').checked;
+    const showMissingPicks = document.getElementById('showMissingPicksOnly').checked;
+    const showMissingLocs = document.getElementById('showMissingLocsOnly').checked;
     const showModified = document.getElementById('showModifiedOnly').checked;
 
     const rows = document.querySelectorAll('#productTableBody tr');
 
     rows.forEach(row => {
       const variantId = row.dataset.variantId;
-      const isDuplicate = row.querySelector('.duplicate-indicator') !== null;
-      const isMissing = row.querySelector('.missing-indicator') !== null;
+      const isDuplicateSku = row.dataset.isDuplicateSku === '1';
+      const isMissingSku = row.dataset.isMissingSku === '1';
+      const isDuplicatePick = row.dataset.isDuplicatePick === '1';
+      const isMissingPick = row.dataset.isMissingPick === '1';
+      const isMissingLocation = row.dataset.isMissingLocation === '1';
       const isModified = modifiedData.has(variantId);
 
       let showRow = true;
@@ -363,21 +479,25 @@
       if (searchValue) {
         const searchableText = row.dataset.productTitle + ' ' +
                                row.dataset.variantTitle + ' ' +
-                               row.dataset.sku;
+                               row.dataset.sku + ' ' +
+                               row.dataset.pickNumber + ' ' +
+                               row.dataset.warehouseLocation;
         showRow = searchableText.includes(searchValue);
       }
 
-      // Tab-like logic (mutually exclusive)
-      if (showRow && showDuplicates) showRow = isDuplicate;
-      if (showRow && showMissing)    showRow = isMissing;
-      if (showRow && showModified)   showRow = isModified;
+      // Filter logic (mutually exclusive)
+      if (showRow && showDuplicates) showRow = isDuplicateSku;
+      if (showRow && showMissing) showRow = isMissingSku;
+      if (showRow && showDupPicks) showRow = isDuplicatePick;
+      if (showRow && showMissingPicks) showRow = isMissingPick;
+      if (showRow && showMissingLocs) showRow = isMissingLocation;
+      if (showRow && showModified) showRow = isModified;
 
       row.style.display = showRow ? '' : 'none';
     });
   }
 
   function getVisibleVariantIds() {
-    // Variant IDs for rows currently visible in the table
     const rows = Array.from(document.querySelectorAll('#productTableBody tr'));
     const ids = [];
     rows.forEach(row => {
@@ -389,7 +509,6 @@
 
   // ===== Save logic (accurate diffs) ========================================
   function buildDiffPayload(variantId) {
-    // Use staged edits, but drop fields that didn't actually change vs ORIGINAL baseline
     const id = String(variantId);
     const staged = modifiedData.get(id);
     if (!staged || Object.keys(staged).length === 0) return null;
@@ -397,7 +516,7 @@
     const orig = baseline.get(id) || {};
     const diff = {};
     for (const [k, val] of Object.entries(staged)) {
-      const normNew  = (k === 'price' || k === 'weight') ? String(val ?? '') : String(val ?? '').trim();
+      const normNew = (k === 'price' || k === 'weight') ? String(val ?? '') : String(val ?? '').trim();
       const normOrig = (k === 'price' || k === 'weight') ? String(orig[k] ?? '') : String((orig[k] ?? '')).trim();
       if (normNew !== normOrig) diff[k] = val;
     }
@@ -406,7 +525,6 @@
   }
 
   async function saveChanges() {
-    // Commit any in-progress edit (so staged value is captured)
     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
       document.activeElement.blur();
     }
@@ -415,10 +533,6 @@
     const selected = Array.from(selectedIds);
     const showModified = document.getElementById('showModifiedOnly').checked;
 
-    // Scope:
-    // 1) If user selected rows, selection wins
-    // 2) Else if "Show Modified Only" tab is active, save only visible rows
-    // 3) Else, save all staged edits
     let idsToConsider;
     if (selected.length > 0) {
       idsToConsider = selected;
@@ -428,7 +542,6 @@
       idsToConsider = Array.from(modifiedData.keys());
     }
 
-    // Build update entries: only variants that (a) have staged edits and (b) actually differ from baseline
     const updates = [];
     idsToConsider.forEach(id => {
       const payload = buildDiffPayload(id);
@@ -450,11 +563,24 @@
         body: JSON.stringify({ updates })
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
 
-      showStatus(`Successfully updated ${result.updated} variants`, 'success');
+      if (!response.ok) {
+        // Check for validation errors
+        if (result.conflicts) {
+          const conflictMsg = result.conflicts.map(c => c.message).join('\n');
+          showStatus(`Save failed: ${conflictMsg}`, 'error');
+          return;
+        }
+        throw new Error(result.error || result.message);
+      }
 
-      // Clear only what we sent; keep other staged edits intact
+      let msg = `Updated ${result.updated} variants`;
+      if (result.failed > 0) msg += `, ${result.failed} failed`;
+      if (result.warnings?.length > 0) msg += ` (${result.warnings.length} warnings)`;
+      if (result.shipstationPending > 0) msg += ` | ${result.shipstationPending} pending ShipStation sync`;
+
+      showStatus(msg, result.failed > 0 ? 'warning' : 'success');
+
       updates.forEach(u => {
         modifiedData.delete(String(u.id));
         selectedIds.delete(String(u.id));
@@ -465,7 +591,67 @@
       showStatus('Failed to save: ' + error.message, 'error');
     } finally {
       saveBtn.disabled = false;
-      saveBtn.textContent = '💾 Save Changes to Shopify';
+      saveBtn.textContent = 'Save Changes';
+    }
+  }
+
+  // ===== Sync operations ====================================================
+  async function syncFromShopify() {
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
+
+    loading.classList.add('active');
+    loadingText.textContent = 'Syncing products from Shopify (this may take a minute)...';
+
+    try {
+      const response = await fetch('/api/products/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'full' })
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error);
+
+      showStatus(
+        `Synced ${result.products_synced} products, ${result.variants_synced} variants in ${result.duration_seconds}s`,
+        'success'
+      );
+
+      // Refresh the table
+      await refreshProducts();
+    } catch (error) {
+      showStatus('Sync failed: ' + error.message, 'error');
+    } finally {
+      loading.classList.remove('active');
+    }
+  }
+
+  async function syncToShipStation() {
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
+
+    loading.classList.add('active');
+    loadingText.textContent = 'Syncing warehouse locations to ShipStation...';
+
+    try {
+      const response = await fetch('/api/products/sync-shipstation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'dirty' })
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error);
+
+      let msg = `ShipStation sync: ${result.created} created, ${result.updated} updated`;
+      if (result.failed > 0) msg += `, ${result.failed} failed`;
+
+      showStatus(msg, result.failed > 0 ? 'warning' : 'success');
+    } catch (error) {
+      showStatus('ShipStation sync failed: ' + error.message, 'error');
+    } finally {
+      loading.classList.remove('active');
     }
   }
 
@@ -498,7 +684,6 @@
         : (v.sku || '');
     };
 
-    // Build groups: sku -> [{ p, v }]
     const groups = new Map();
     products.forEach(p => p.variants.forEach(v => {
       const s = String(stagedSku(v) || '').trim().toUpperCase();
@@ -506,14 +691,12 @@
       groups.set(s, (groups.get(s) || []).concat({ p, v }));
     }));
 
-    // Only groups with >1 are duplicates
     const dupGroups = Array.from(groups.entries()).filter(([, arr]) => arr.length > 1);
     if (dupGroups.length === 0) {
       showStatus('No duplicates found to generate.', 'warning');
       return;
     }
 
-    // Set of currently used SKUs (live + staged), normalized uppercase
     const used = new Set();
     products.forEach(p => p.variants.forEach(v => {
       const vid = String(v.id);
@@ -529,7 +712,7 @@
 
     for (const [skuKey, arr] of dupGroups) {
       arr.sort((a, b) => String(a.v.id).localeCompare(String(b.v.id)));
-      used.add(skuKey.toUpperCase()); // keep first as-is
+      used.add(skuKey.toUpperCase());
 
       for (let i = 1; i < arr.length; i++) {
         const { p, v } = arr[i];
@@ -553,7 +736,7 @@
       }
     }
 
-    recomputeDuplicateSet();
+    recomputeDuplicates();
     renderTable();
     updateStats();
     filterTable();
@@ -569,7 +752,6 @@
       return;
     }
 
-    // Set of currently used SKUs (live + staged), normalized uppercase
     const used = new Set();
     products.forEach(p => p.variants.forEach(v => {
       const vid = String(v.id);
@@ -583,7 +765,6 @@
     const gen = new window.SKUGenerator(window.SKU_RULES, { maxLength: 20, imperfectCode: 'IM' });
     let changed = 0;
 
-    // For every variant with missing SKU, generate a unique one
     products.forEach(p => p.variants.forEach(v => {
       const vid = String(v.id);
       const staged = (modifiedData.has(vid) && modifiedData.get(vid).sku !== undefined)
@@ -591,7 +772,7 @@
         : (v.sku || '');
       const current = String(staged || '').trim();
 
-      if (current) return; // not missing
+      if (current) return;
 
       const options = [v.option1, v.option2, v.option3].filter(Boolean);
 
@@ -611,7 +792,7 @@
       changed++;
     }));
 
-    recomputeDuplicateSet();
+    recomputeDuplicates();
     renderTable();
     updateStats();
     filterTable();
@@ -623,7 +804,6 @@
 
   // ===== ShipStation CSV export (with HS map) ===============================
   function exportShipStationCSV() {
-    // Columns expected by ShipStation (from ProductImportSample.csv)
     const headers = [
       'SKU','Name','WarehouseLocation','WeightOz','Category','Tag1','Tag2','Tag3','Tag4','Tag5',
       'CustomsDescription','CustomsValue','CustomsTariffNo','CustomsCountry','ThumbnailUrl','UPC',
@@ -637,7 +817,7 @@
     const toOz = (grams) => {
       const n = Number(grams);
       if (!Number.isFinite(n)) return '';
-      return Math.round(n * 0.03527396195 * 100) / 100; // 2 decimals
+      return Math.round(n * 0.03527396195 * 100) / 100;
     };
 
     const rows = [];
@@ -647,19 +827,19 @@
 
       const staged = modifiedData.get(id) || {};
       const sku = (staged.sku !== undefined ? staged.sku : v.sku) || '';
-      if (!sku.trim()) return; // ShipStation requires SKU
+      if (!sku.trim()) return;
 
-      const price   = staged.price !== undefined ? staged.price : v.price;
-      const weight  = staged.weight !== undefined ? staged.weight : v.weight; // grams
-      const hs      = staged.harmonized_system_code !== undefined ? staged.harmonized_system_code : v.harmonized_system_code;
-      let origin    = staged.country_code_of_origin !== undefined ? staged.country_code_of_origin : v.country_code_of_origin;
+      const price = staged.price !== undefined ? staged.price : v.price;
+      const weight = staged.weight !== undefined ? staged.weight : v.weight;
+      const hs = staged.harmonized_system_code !== undefined ? staged.harmonized_system_code : v.harmonized_system_code;
+      let origin = staged.country_code_of_origin !== undefined ? staged.country_code_of_origin : v.country_code_of_origin;
+      const warehouseLoc = staged.warehouse_location !== undefined ? staged.warehouse_location : v.warehouse_location;
 
-      const name = (v.title && v.title !== 'Default') ? `${p.title} — ${v.title}` : p.title;
+      const name = (v.title && v.title !== 'Default') ? `${p.title} - ${v.title}` : p.title;
 
       const tagsArr = (p.tags || '').split(',').map(s => s.trim()).filter(Boolean);
       const [tag1, tag2, tag3, tag4, tag5] = [tagsArr[0]||'', tagsArr[1]||'', tagsArr[2]||'', tagsArr[3]||'', tagsArr[4]||''];
 
-      // Try variant image; else product image
       let thumb = '';
       if (v.image_id && Array.isArray(p.images)) {
         const hit = p.images.find(img => String(img.id) === String(v.image_id));
@@ -670,7 +850,6 @@
 
       const upc = v.barcode || '';
 
-      // Customs description via HS map (if available)
       let customsDesc = name;
       if (hs) {
         const key1 = String(hs).trim();
@@ -684,7 +863,7 @@
       const rec = {
         SKU: sku,
         Name: name,
-        WarehouseLocation: '',
+        WarehouseLocation: warehouseLoc || '',
         WeightOz: toOz(weight),
         Category: p.product_type || '',
         Tag1: tag1, Tag2: tag2, Tag3: tag3, Tag4: tag4, Tag5: tag5,
@@ -696,7 +875,7 @@
         UPC: upc,
         FillSKU: '',
         Length: '', Width: '', Height: '',
-        UseProductName: '',     // blank => use Name
+        UseProductName: '',
         Active: 'True',
         ParentSKU: '',
         IsReturnable: 'True'
@@ -757,11 +936,10 @@
     const rows = parseCSV(csvText);
     if (!rows || rows.length === 0) return;
 
-    // Find column indices by header names (flexible)
     const hdr = rows[0].map(h => String(h).trim().toLowerCase());
     const idxDesc = hdr.findIndex(h => h.includes('description'));
-    const idxHS   = hdr.findIndex(h => h.includes('hs') && h.includes('code'));
-    const idxCtr  = hdr.findIndex(h => h.includes('country') && h.includes('origin'));
+    const idxHS = hdr.findIndex(h => h.includes('hs') && h.includes('code'));
+    const idxCtr = hdr.findIndex(h => h.includes('country') && h.includes('origin'));
 
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -770,7 +948,6 @@
       const desc = String(r[idxDesc] || '').trim();
       const country = String(r[idxCtr] || '').trim();
       HS_MAP.set(hs, { desc, country });
-      // also accept dotted key (e.g., 4820.10.2010)
       const dotted = addDotsToHs(hs);
       if (dotted) HS_MAP.set(dotted, { desc, country });
     }
@@ -781,7 +958,6 @@
   }
   function addDotsToHs(digits) {
     const s = String(digits || '').replace(/[^0-9]/g, '');
-    // e.g., 4820102010 -> 4820.10.2010
     if (s.length === 10) return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6)}`;
     return '';
   }
@@ -809,7 +985,6 @@
       cells.push(cur);
       rows.push(cells);
     }
-    // Drop trailing empty rows
     while (rows.length && rows[rows.length-1].every(c => String(c).trim() === '')) rows.pop();
     return rows;
   }
