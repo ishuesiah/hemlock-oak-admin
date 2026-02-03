@@ -12,7 +12,7 @@ const METAFIELD_CONFIG = {
     type: process.env.PICK_NUMBER_METAFIELD_TYPE || 'single_line_text_field'
   },
   warehouse_location: {
-    namespace: process.env.WAREHOUSE_LOCATION_METAFIELD_NAMESPACE || 'custom',
+    namespace: process.env.WAREHOUSE_LOCATION_METAFIELD_NAMESPACE || 'inventory',
     key: process.env.WAREHOUSE_LOCATION_METAFIELD_KEY || 'warehouse_location',
     type: process.env.WAREHOUSE_LOCATION_METAFIELD_TYPE || 'single_line_text_field'
   }
