@@ -577,6 +577,90 @@ router.get('/api/products/shipstation-pending', requireAuthApi, async (req, res)
 });
 
 // ============================================================================
+// DEBUG ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/products/debug/metafields/:variantId
+ * Debug endpoint to check metafield fetching for a specific variant
+ */
+router.get('/api/products/debug/metafields/:variantId', requireAuthApi, async (req, res) => {
+  try {
+    const variantId = req.params.variantId;
+    console.log('[Debug] Fetching metafields for variant:', variantId);
+
+    // Try GraphQL method
+    const graphqlResult = await shopify.getVariantMetafields(variantId);
+    console.log('[Debug] GraphQL result:', graphqlResult);
+
+    // Also try REST API directly
+    const restResult = await shopify.client.get(`/variants/${variantId}/metafields.json`);
+    console.log('[Debug] REST result:', restResult.data);
+
+    res.json({
+      variantId,
+      graphqlResult,
+      restMetafields: restResult.data?.metafields || [],
+      config: shopify.metafieldConfig
+    });
+  } catch (error) {
+    console.error('[Debug] Error:', error.message);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
+/**
+ * GET /api/products/debug/graphql-test
+ * Test the GraphQL metafield query directly
+ */
+router.get('/api/products/debug/graphql-test', requireAuthApi, async (req, res) => {
+  try {
+    const { namespace: pickNs, key: pickKey } = shopify.metafieldConfig.pick_number;
+    const { namespace: locNs, key: locKey } = shopify.metafieldConfig.warehouse_location;
+
+    console.log('[Debug] Metafield config:', { pickNs, pickKey, locNs, locKey });
+
+    const query = `
+      query {
+        productVariants(first: 5) {
+          edges {
+            node {
+              id
+              legacyResourceId
+              sku
+              metafields(first: 20) {
+                edges {
+                  node {
+                    id
+                    namespace
+                    key
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await shopify.graphqlClient.post('/graphql.json', { query });
+    console.log('[Debug] GraphQL response:', JSON.stringify(response.data, null, 2));
+
+    res.json({
+      config: { pickNs, pickKey, locNs, locKey },
+      response: response.data
+    });
+  } catch (error) {
+    console.error('[Debug] GraphQL error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: error.message,
+      graphqlErrors: error.response?.data?.errors
+    });
+  }
+});
+
+// ============================================================================
 // SHOPIFY WEBHOOKS
 // ============================================================================
 
