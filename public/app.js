@@ -1224,7 +1224,7 @@
     showStatus(`Generating pick numbers for ${variantsNeedingPick.length} variants...`, 'info');
 
     try {
-      const response = await fetchJSON('/products/api/products/generate-pick-numbers', {
+      const response = await fetchJSON('/api/products/generate-pick-numbers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ variantIds: variantsNeedingPick.map(v => v.id) })
