@@ -562,10 +562,17 @@ class ShopifyAPI {
           for (const mfEdge of variant.metafields.edges) {
             const mf = mfEdge.node;
             totalMetafieldsFound++;
-            if (mf.namespace === pickNs && mf.key === pickKey) {
+            // Note: When using keys filter, Shopify returns key as "namespace.key" format
+            // So we check for both formats: "pick_number" OR "custom.pick_number"
+            const isPickNumber = (mf.namespace === pickNs && mf.key === pickKey) ||
+                                 (mf.key === `${pickNs}.${pickKey}`);
+            const isWarehouseLocation = (mf.namespace === locNs && mf.key === locKey) ||
+                                        (mf.key === `${locNs}.${locKey}`);
+
+            if (isPickNumber) {
               metafieldData.pick_number = mf.value;
               metafieldData.pick_metafield_id = mf.legacyResourceId;
-            } else if (mf.namespace === locNs && mf.key === locKey) {
+            } else if (isWarehouseLocation) {
               metafieldData.warehouse_location = mf.value;
               metafieldData.location_metafield_id = mf.legacyResourceId;
             }
