@@ -692,6 +692,179 @@ router.post('/api/products/import-shipstation-names', requireAuthApi, async (req
 });
 
 // ============================================================================
+// TAGS API
+// ============================================================================
+
+/**
+ * GET /api/tags
+ * Get all tags
+ */
+router.get('/api/tags', requireAuthApi, async (req, res) => {
+  try {
+    const pool = productDb.getPool();
+    const result = await pool.query('SELECT * FROM tags ORDER BY name');
+    res.json({ tags: result.rows });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/tags
+ * Create a new tag
+ * Body: { name: string, color?: string }
+ */
+router.post('/api/tags', requireAuthApi, async (req, res) => {
+  try {
+    const { name, color = '#6c757d' } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Tag name is required' });
+    }
+
+    const pool = productDb.getPool();
+    const result = await pool.query(
+      'INSERT INTO tags (name, color) VALUES ($1, $2) RETURNING *',
+      [name.trim(), color]
+    );
+    res.json({ tag: result.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'Tag already exists' });
+    }
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/tags/:id
+ * Update a tag
+ */
+router.put('/api/tags/:id', requireAuthApi, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, color } = req.body;
+
+    const pool = productDb.getPool();
+    const result = await pool.query(
+      'UPDATE tags SET name = COALESCE($1, name), color = COALESCE($2, color) WHERE id = $3 RETURNING *',
+      [name, color, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag not found' });
+    }
+    res.json({ tag: result.rows[0] });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/tags/:id
+ * Delete a tag
+ */
+router.delete('/api/tags/:id', requireAuthApi, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = productDb.getPool();
+    await pool.query('DELETE FROM tags WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/products/tags
+ * Add tags to variants
+ * Body: { variantIds: string[], tagIds: number[] }
+ */
+router.post('/api/products/tags', requireAuthApi, async (req, res) => {
+  try {
+    const { variantIds, tagIds } = req.body;
+    if (!Array.isArray(variantIds) || !Array.isArray(tagIds)) {
+      return res.status(400).json({ error: 'variantIds and tagIds must be arrays' });
+    }
+
+    const pool = productDb.getPool();
+    let added = 0;
+
+    for (const variantId of variantIds) {
+      for (const tagId of tagIds) {
+        try {
+          await pool.query(
+            'INSERT INTO variant_tags (variant_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [String(variantId), tagId]
+          );
+          added++;
+        } catch (e) { /* ignore duplicates */ }
+      }
+    }
+
+    res.json({ success: true, added });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/products/tags
+ * Remove tags from variants
+ * Body: { variantIds: string[], tagIds: number[] }
+ */
+router.delete('/api/products/tags', requireAuthApi, async (req, res) => {
+  try {
+    const { variantIds, tagIds } = req.body;
+    if (!Array.isArray(variantIds) || !Array.isArray(tagIds)) {
+      return res.status(400).json({ error: 'variantIds and tagIds must be arrays' });
+    }
+
+    const pool = productDb.getPool();
+    await pool.query(
+      'DELETE FROM variant_tags WHERE variant_id = ANY($1) AND tag_id = ANY($2)',
+      [variantIds.map(String), tagIds]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/products/variant-tags
+ * Get all variant-tag associations
+ */
+router.get('/api/products/variant-tags', requireAuthApi, async (req, res) => {
+  try {
+    const pool = productDb.getPool();
+    const result = await pool.query(`
+      SELECT vt.variant_id, t.id as tag_id, t.name, t.color
+      FROM variant_tags vt
+      JOIN tags t ON vt.tag_id = t.id
+    `);
+
+    // Group by variant
+    const byVariant = {};
+    for (const row of result.rows) {
+      if (!byVariant[row.variant_id]) byVariant[row.variant_id] = [];
+      byVariant[row.variant_id].push({ id: row.tag_id, name: row.name, color: row.color });
+    }
+
+    res.json({ variantTags: byVariant });
+  } catch (err) {
+    console.error('[Tags API] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
 // DEBUG ENDPOINTS
 // ============================================================================
 

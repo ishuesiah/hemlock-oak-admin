@@ -21,6 +21,7 @@
   const DEFAULT_COLUMNS = [
     { id: 'select', label: 'Select', visible: true, fixed: true, width: 50 },
     { id: 'status', label: 'Status', visible: true, width: 80 },
+    { id: 'tags', label: 'Tags', visible: true, width: 150 },
     { id: 'productTitle', label: 'Product Title', visible: true, width: 200 },
     { id: 'variant', label: 'Variant', visible: true, width: 120 },
     { id: 'shipstationName', label: 'ShipStation Name', visible: false, width: 250 },
@@ -33,6 +34,10 @@
     { id: 'hsCode', label: 'HS Code', visible: true, width: 100 },
     { id: 'country', label: 'Country', visible: true, width: 70 }
   ];
+
+  // Tags state
+  let allTags = [];
+  let variantTags = {}; // { variantId: [{ id, name, color }, ...] }
 
   let columnConfig = loadColumnConfig();
 
@@ -98,6 +103,14 @@
   window.closeColumnSettings = closeColumnSettings;
   window.toggleColumn = toggleColumn;
   window.resetColumns = resetColumns;
+  // Tag functions
+  window.openTagManager = openTagManager;
+  window.closeTagManager = closeTagManager;
+  window.createTag = createTag;
+  window.deleteTag = deleteTag;
+  window.applyTagToSelected = applyTagToSelected;
+  window.removeTagFromSelected = removeTagFromSelected;
+  window.filterByTag = filterByTag;
 
   // Track last clicked checkbox index for shift+click
   let lastCheckedIndex = null;
@@ -225,6 +238,9 @@
           warehouse_location: (v.warehouse_location ?? '')
         });
       }));
+
+      // Load tags
+      await loadTags();
 
       renderTable();
       updateStats();
@@ -376,6 +392,19 @@
               cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'country_code_of_origin')">${country}</span>`;
               if (staged.country_code_of_origin !== undefined) cell.classList.add('cell-modified');
               break;
+
+            case 'tags':
+              const vTags = variantTags[variantId] || [];
+              if (vTags.length > 0) {
+                cell.innerHTML = vTags.map(t =>
+                  `<span class="tag-badge" style="background:${t.color}" title="${t.name}">${t.name}</span>`
+                ).join('');
+              } else {
+                cell.innerHTML = '<span class="no-tags">—</span>';
+              }
+              cell.style.cursor = 'pointer';
+              cell.onclick = (e) => openTagEditor(variantId, e);
+              break;
           }
         });
 
@@ -393,6 +422,10 @@
         row.dataset.isDuplicatePick = isDuplicatePick ? '1' : '0';
         row.dataset.isMissingPick = isMissingPick ? '1' : '0';
         row.dataset.isMissingLocation = isMissingLocation ? '1' : '0';
+        // Tags for filtering
+        const vTags = variantTags[variantId] || [];
+        row.dataset.tagIds = vTags.map(t => t.id).join(',');
+        row.dataset.tagNames = vTags.map(t => t.name.toLowerCase()).join(',');
       });
     });
 
@@ -986,6 +1019,18 @@
         if (matchesExclude) showRow = false;
       }
 
+      // Tag filter
+      if (showRow && activeTagFilter) {
+        if (activeTagFilter === '__none__') {
+          // Show only variants with no tags
+          showRow = !row.dataset.tagIds || row.dataset.tagIds === '';
+        } else {
+          // Show only variants with the selected tag
+          const tagIds = (row.dataset.tagIds || '').split(',');
+          showRow = tagIds.includes(String(activeTagFilter));
+        }
+      }
+
       // Filter logic (mutually exclusive)
       if (showRow && showDuplicates) showRow = isDuplicateSku;
       if (showRow && showMissing) showRow = isMissingSku;
@@ -1546,6 +1591,10 @@
     const genPickBtn = document.getElementById('genPickBtn');
     if (genPickBtn) genPickBtn.disabled = !hasSelection;
     document.getElementById('selectedCount').textContent = `${selectedIds.size} selected`;
+
+    // Update tag selection count in tag manager
+    const tagSelectionCount = document.getElementById('tagSelectionCount');
+    if (tagSelectionCount) tagSelectionCount.textContent = selectedIds.size;
   }
 
   function selectAllVisible() {
@@ -1643,27 +1692,61 @@
   }
 
   // ===== Pick Number Suggestions =============================================
+  // Smart suggestion system that groups by product type and SKU prefix
+
+  // Maps to store pick numbers grouped by category
+  let picksByProductType = {};  // { productType: [pickNumbers] }
+  let picksBySkuPrefix = {};    // { skuPrefix: [pickNumbers] }
+  let globalMaxPick = 0;
+
   function initPickSuggestions() {
     // Build set of all used pick numbers (including staged edits)
     usedPickNumbers.clear();
+    picksByProductType = {};
+    picksBySkuPrefix = {};
+    globalMaxPick = 0;
+
     products.forEach(p => {
+      const productType = (p.product_type || 'Unknown').toLowerCase();
+
       p.variants.forEach(v => {
         const vid = String(v.id);
         const staged = modifiedData.get(vid) || {};
         const pick = staged.pick_number !== undefined ? staged.pick_number : v.pick_number;
+        const sku = staged.sku !== undefined ? staged.sku : v.sku || '';
+
         if (pick && String(pick).trim()) {
-          usedPickNumbers.add(String(pick).trim());
+          const pickNum = parseInt(pick);
+          if (!isNaN(pickNum)) {
+            usedPickNumbers.add(String(pickNum));
+
+            // Track max
+            if (pickNum > globalMaxPick) globalMaxPick = pickNum;
+
+            // Group by product type
+            if (!picksByProductType[productType]) picksByProductType[productType] = [];
+            picksByProductType[productType].push(pickNum);
+
+            // Group by SKU prefix (first segment before dash)
+            const skuPrefix = sku.split('-')[0].toUpperCase();
+            if (skuPrefix) {
+              if (!picksBySkuPrefix[skuPrefix]) picksBySkuPrefix[skuPrefix] = [];
+              picksBySkuPrefix[skuPrefix].push(pickNum);
+            }
+          }
         }
       });
     });
 
-    // Find max pick number to start suggestions from
-    let maxPick = 0;
-    usedPickNumbers.forEach(p => {
-      const num = parseInt(p);
-      if (!isNaN(num) && num > maxPick) maxPick = num;
-    });
-    pickSuggestionCounter = maxPick + 1;
+    // Sort all pick number arrays
+    for (const key of Object.keys(picksByProductType)) {
+      picksByProductType[key].sort((a, b) => a - b);
+    }
+    for (const key of Object.keys(picksBySkuPrefix)) {
+      picksBySkuPrefix[key].sort((a, b) => a - b);
+    }
+
+    pickSuggestionCounter = globalMaxPick + 1;
   }
 
   function getNextAvailablePickNumber(variantId) {
@@ -1672,17 +1755,134 @@
       initPickSuggestions();
     }
 
-    // Find next available number
-    while (usedPickNumbers.has(String(pickSuggestionCounter))) {
-      pickSuggestionCounter++;
+    // Find the variant's product and SKU
+    let productType = 'unknown';
+    let productTitle = '';
+    let skuPrefix = '';
+    let sku = '';
+
+    for (const p of products) {
+      for (const v of p.variants) {
+        if (String(v.id) === String(variantId)) {
+          productType = (p.product_type || 'Unknown').toLowerCase();
+          productTitle = p.title || '';
+          const staged = modifiedData.get(String(v.id)) || {};
+          sku = staged.sku !== undefined ? staged.sku : v.sku || '';
+          skuPrefix = sku.split('-')[0].toUpperCase();
+          break;
+        }
+      }
     }
 
-    const suggestion = pickSuggestionCounter;
-    // Reserve this number temporarily
+    // Detect year and imperfect status from SKU and title
+    const skuUpper = sku.toUpperCase();
+    const titleLower = productTitle.toLowerCase();
+
+    const is2026 = skuUpper.includes('2026') || skuUpper.startsWith('26-') || skuUpper.startsWith('26Q');
+    const is2025 = skuUpper.includes('2025') || skuUpper.startsWith('25-') || skuUpper.startsWith('25Q');
+    const isImperfect = skuUpper.includes('-IM') || skuUpper.endsWith('IM') || titleLower.includes('imperfect');
+
+    // Determine target range based on year and imperfect status
+    let targetRange = null;
+
+    if (is2026 || isImperfect) {
+      // 2026 products and imperfects go in the 9000s
+      targetRange = { min: 9000, max: 9999 };
+    } else if (is2025) {
+      // 2025 products typically in 1000-2000
+      targetRange = { min: 1000, max: 1999 };
+    }
+
+    // Try to find a suggestion in the same neighborhood
+    let suggestion = null;
+
+    // Strategy 1: If we have a target range, search within it first
+    if (targetRange) {
+      suggestion = findInRange(targetRange.min, targetRange.max);
+    }
+
+    // Strategy 2: Look for picks with the same SKU prefix
+    if (suggestion === null && skuPrefix && picksBySkuPrefix[skuPrefix] && picksBySkuPrefix[skuPrefix].length > 0) {
+      suggestion = findSmartSuggestion(picksBySkuPrefix[skuPrefix]);
+    }
+
+    // Strategy 3: Fall back to product type
+    if (suggestion === null && picksByProductType[productType] && picksByProductType[productType].length > 0) {
+      suggestion = findSmartSuggestion(picksByProductType[productType]);
+    }
+
+    // Strategy 4: Global fallback
+    if (suggestion === null) {
+      while (usedPickNumbers.has(String(pickSuggestionCounter))) {
+        pickSuggestionCounter++;
+      }
+      suggestion = pickSuggestionCounter;
+    }
+
+    // Reserve this number
     usedPickNumbers.add(String(suggestion));
-    pickSuggestionCounter++;
 
     return suggestion;
+  }
+
+  function findInRange(min, max) {
+    // Find first available number in the range
+    for (let candidate = min; candidate <= max; candidate++) {
+      if (!usedPickNumbers.has(String(candidate))) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  function findSmartSuggestion(existingPicks) {
+    if (!existingPicks || existingPicks.length === 0) return null;
+
+    // Find the range (min, max) for this group
+    const minPick = Math.min(...existingPicks);
+    const maxPick = Math.max(...existingPicks);
+
+    // Strategy A: Look for a gap within the existing range
+    // Check for gaps of reasonable size (not too big)
+    const sorted = [...existingPicks].sort((a, b) => a - b);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const gap = sorted[i + 1] - sorted[i];
+      if (gap > 1 && gap <= 10) {
+        // There's a small gap - find an available number in it
+        for (let candidate = sorted[i] + 1; candidate < sorted[i + 1]; candidate++) {
+          if (!usedPickNumbers.has(String(candidate))) {
+            return candidate;
+          }
+        }
+      }
+    }
+
+    // Strategy B: Extend from the max of this group
+    let candidate = maxPick + 1;
+    let attempts = 0;
+    while (usedPickNumbers.has(String(candidate)) && attempts < 100) {
+      candidate++;
+      attempts++;
+    }
+
+    if (!usedPickNumbers.has(String(candidate))) {
+      return candidate;
+    }
+
+    // Strategy C: Try extending from before the min (for filling in earlier ranges)
+    if (minPick > 1) {
+      candidate = minPick - 1;
+      attempts = 0;
+      while (candidate > 0 && usedPickNumbers.has(String(candidate)) && attempts < 50) {
+        candidate--;
+        attempts++;
+      }
+      if (candidate > 0 && !usedPickNumbers.has(String(candidate))) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   function acceptPickSuggestion(variantId, suggestion) {
@@ -2040,6 +2240,334 @@ ${pages.join('')}
 </div>
 ${pages.join('')}
 </body></html>`;
+  }
+
+  // ===== Tag Management =======================================================
+
+  // Tag filter state
+  let activeTagFilter = null;
+
+  // Expose additional tag functions
+  window.openTagEditor = openTagEditor;
+  window.closeTagEditor = closeTagEditor;
+  window.toggleTagOnVariant = toggleTagOnVariant;
+
+  async function loadTags() {
+    try {
+      // Load all tags
+      const tagsRes = await fetchJSON('/api/tags');
+      allTags = tagsRes.tags || [];
+
+      // Load variant-tag associations
+      const vtRes = await fetchJSON('/api/products/variant-tags');
+      variantTags = vtRes.variantTags || {};
+
+      // Update tag filter dropdown if it exists
+      populateTagFilter();
+    } catch (err) {
+      console.error('Failed to load tags:', err);
+    }
+  }
+
+  function populateTagFilter() {
+    const tagFilter = document.getElementById('tagFilter');
+    if (tagFilter) {
+      tagFilter.innerHTML = '<option value="">All Tags</option>';
+      tagFilter.innerHTML += '<option value="__none__">No Tags</option>';
+
+      allTags.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        option.style.color = tag.color;
+        tagFilter.appendChild(option);
+      });
+    }
+
+    // Also update the tag action select in the tag manager
+    const tagActionSelect = document.getElementById('tagActionSelect');
+    if (tagActionSelect) {
+      tagActionSelect.innerHTML = '<option value="">Select a tag...</option>';
+      allTags.forEach(tag => {
+        const option = document.createElement('option');
+        option.value = tag.id;
+        option.textContent = tag.name;
+        tagActionSelect.appendChild(option);
+      });
+    }
+  }
+
+  function filterByTag(tagId) {
+    activeTagFilter = tagId || null;
+    filterTable();
+  }
+
+  function openTagManager() {
+    const panel = document.getElementById('tagManagerPanel');
+    if (!panel) return;
+    renderTagManagerList();
+    panel.classList.add('active');
+  }
+
+  function closeTagManager() {
+    const panel = document.getElementById('tagManagerPanel');
+    if (panel) panel.classList.remove('active');
+  }
+
+  function renderTagManagerList() {
+    const list = document.getElementById('tagManagerList');
+    if (!list) return;
+
+    if (allTags.length === 0) {
+      list.innerHTML = '<p style="color:#666;font-size:.9rem;">No tags created yet.</p>';
+      return;
+    }
+
+    list.innerHTML = allTags.map(tag => `
+      <div class="tag-manager-item">
+        <span class="tag-badge" style="background:${tag.color}">${tag.name}</span>
+        <button class="btn-tag-delete" onclick="deleteTag(${tag.id})" title="Delete tag">&times;</button>
+      </div>
+    `).join('');
+  }
+
+  async function createTag() {
+    const nameInput = document.getElementById('newTagName');
+    const colorInput = document.getElementById('newTagColor');
+    if (!nameInput) return;
+
+    const name = nameInput.value.trim();
+    if (!name) {
+      showStatus('Tag name cannot be empty', 'warning');
+      return;
+    }
+
+    const color = colorInput?.value || '#6c757d';
+
+    try {
+      const result = await fetchJSON('/api/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, color })
+      });
+
+      allTags.push(result.tag);
+      nameInput.value = '';
+      renderTagManagerList();
+      populateTagFilter();
+      showStatus(`Tag "${name}" created`, 'success');
+    } catch (err) {
+      showStatus('Failed to create tag: ' + err.message, 'error');
+    }
+  }
+
+  async function deleteTag(tagId) {
+    const tag = allTags.find(t => t.id === tagId);
+    if (!tag) return;
+
+    if (!confirm(`Delete tag "${tag.name}"? This will remove it from all variants.`)) return;
+
+    try {
+      await fetchJSON(`/api/tags/${tagId}`, { method: 'DELETE' });
+
+      allTags = allTags.filter(t => t.id !== tagId);
+      // Remove from variantTags
+      Object.keys(variantTags).forEach(vid => {
+        variantTags[vid] = variantTags[vid].filter(t => t.id !== tagId);
+      });
+
+      renderTagManagerList();
+      populateTagFilter();
+      renderTable();
+      showStatus(`Tag "${tag.name}" deleted`, 'success');
+    } catch (err) {
+      showStatus('Failed to delete tag: ' + err.message, 'error');
+    }
+  }
+
+  async function applyTagToSelected(tagId) {
+    if (selectedIds.size === 0) {
+      showStatus('No variants selected', 'warning');
+      return;
+    }
+
+    const tag = allTags.find(t => t.id === parseInt(tagId));
+    if (!tag) return;
+
+    try {
+      await fetchJSON('/api/products/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variantIds: Array.from(selectedIds),
+          tagIds: [parseInt(tagId)]
+        })
+      });
+
+      // Update local state
+      selectedIds.forEach(vid => {
+        if (!variantTags[vid]) variantTags[vid] = [];
+        if (!variantTags[vid].find(t => t.id === tag.id)) {
+          variantTags[vid].push({ id: tag.id, name: tag.name, color: tag.color });
+        }
+      });
+
+      renderTable();
+      showStatus(`Applied tag "${tag.name}" to ${selectedIds.size} variants`, 'success');
+    } catch (err) {
+      showStatus('Failed to apply tag: ' + err.message, 'error');
+    }
+  }
+
+  async function removeTagFromSelected(tagId) {
+    if (selectedIds.size === 0) {
+      showStatus('No variants selected', 'warning');
+      return;
+    }
+
+    const tag = allTags.find(t => t.id === parseInt(tagId));
+    if (!tag) return;
+
+    try {
+      await fetchJSON('/api/products/tags', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          variantIds: Array.from(selectedIds),
+          tagIds: [parseInt(tagId)]
+        })
+      });
+
+      // Update local state
+      selectedIds.forEach(vid => {
+        if (variantTags[vid]) {
+          variantTags[vid] = variantTags[vid].filter(t => t.id !== tag.id);
+        }
+      });
+
+      renderTable();
+      showStatus(`Removed tag "${tag.name}" from ${selectedIds.size} variants`, 'success');
+    } catch (err) {
+      showStatus('Failed to remove tag: ' + err.message, 'error');
+    }
+  }
+
+  // Tag editor for individual variants
+  function openTagEditor(variantId, e) {
+    const existingEditor = document.getElementById('tagEditorPopup');
+    if (existingEditor) existingEditor.remove();
+
+    const vTags = variantTags[variantId] || [];
+    const vTagIds = new Set(vTags.map(t => t.id));
+
+    const popup = document.createElement('div');
+    popup.id = 'tagEditorPopup';
+    popup.className = 'tag-editor-popup';
+    popup.innerHTML = `
+      <div class="tag-editor-content">
+        <div class="tag-editor-header">
+          <span>Edit Tags</span>
+          <button class="close-btn" onclick="closeTagEditor()">&times;</button>
+        </div>
+        <div class="tag-editor-body">
+          ${allTags.length === 0 ? '<p style="color:#666;font-size:.85rem;">No tags available. Create tags in Tag Manager.</p>' : ''}
+          ${allTags.map(tag => `
+            <label class="tag-checkbox">
+              <input type="checkbox" ${vTagIds.has(tag.id) ? 'checked' : ''}
+                onchange="toggleTagOnVariant('${variantId}', ${tag.id}, this.checked)">
+              <span class="tag-badge" style="background:${tag.color}">${tag.name}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    // Position near the clicked cell
+    const clickX = e?.clientX || 100;
+    const clickY = e?.clientY || 100;
+    setTimeout(() => {
+      const rect = popup.getBoundingClientRect();
+      popup.style.top = Math.min(window.innerHeight - rect.height - 20, clickY) + 'px';
+      popup.style.left = Math.min(window.innerWidth - rect.width - 20, clickX) + 'px';
+    }, 0);
+
+    // Close on outside click
+    setTimeout(() => {
+      document.addEventListener('click', closeTagEditorOnOutsideClick);
+    }, 100);
+  }
+
+  function closeTagEditorOnOutsideClick(e) {
+    const popup = document.getElementById('tagEditorPopup');
+    if (popup && !popup.contains(e.target)) {
+      closeTagEditor();
+    }
+  }
+
+  function closeTagEditor() {
+    const popup = document.getElementById('tagEditorPopup');
+    if (popup) popup.remove();
+    document.removeEventListener('click', closeTagEditorOnOutsideClick);
+  }
+
+  async function toggleTagOnVariant(variantId, tagId, checked) {
+    const tag = allTags.find(t => t.id === tagId);
+    if (!tag) return;
+
+    try {
+      if (checked) {
+        await fetchJSON('/api/products/tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            variantIds: [variantId],
+            tagIds: [tagId]
+          })
+        });
+
+        if (!variantTags[variantId]) variantTags[variantId] = [];
+        if (!variantTags[variantId].find(t => t.id === tag.id)) {
+          variantTags[variantId].push({ id: tag.id, name: tag.name, color: tag.color });
+        }
+      } else {
+        await fetchJSON('/api/products/tags', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            variantIds: [variantId],
+            tagIds: [tagId]
+          })
+        });
+
+        if (variantTags[variantId]) {
+          variantTags[variantId] = variantTags[variantId].filter(t => t.id !== tag.id);
+        }
+      }
+
+      // Update the row without full re-render
+      const row = document.querySelector(`tr[data-variant-id="${variantId}"]`);
+      if (row) {
+        const vTags = variantTags[variantId] || [];
+        row.dataset.tagIds = vTags.map(t => t.id).join(',');
+        row.dataset.tagNames = vTags.map(t => t.name.toLowerCase()).join(',');
+
+        // Update tags cell
+        const tagsCell = row.querySelector('td[data-col-id="tags"]');
+        if (tagsCell) {
+          if (vTags.length > 0) {
+            tagsCell.innerHTML = vTags.map(t =>
+              `<span class="tag-badge" style="background:${t.color}" title="${t.name}">${t.name}</span>`
+            ).join('');
+          } else {
+            tagsCell.innerHTML = '<span class="no-tags">—</span>';
+          }
+        }
+      }
+    } catch (err) {
+      showStatus('Failed to update tag: ' + err.message, 'error');
+    }
   }
 
 })();

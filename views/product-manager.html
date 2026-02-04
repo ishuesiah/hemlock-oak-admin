@@ -193,6 +193,54 @@
       font-weight: 600;
     }
     .pick-suggest-btn:hover { background: #219a52; }
+
+    /* Tag badges */
+    .tag-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: .75rem;
+      color: #fff;
+      margin: 1px 2px;
+      white-space: nowrap;
+    }
+    .no-tags { color: #999; font-size: .85rem; }
+
+    /* Tag filter dropdown */
+    .tag-filter { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 120px; }
+
+    /* Tag Manager Panel */
+    .tag-manager-panel { display: none; position: fixed; top: 0; right: 0; width: 320px; height: 100vh; background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,.15); z-index: 1000; }
+    .tag-manager-panel.active { display: block; }
+    .tag-manager-content { height: 100%; display: flex; flex-direction: column; }
+    .tag-manager-header { background: #8e44ad; color: #fff; padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+    .tag-manager-header h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .tag-manager-body { flex: 1; padding: 1rem 1.5rem; overflow-y: auto; }
+    .tag-manager-item { display: flex; align-items: center; justify-content: space-between; padding: .5rem .75rem; background: #f8f9fa; border-radius: 6px; margin-bottom: .5rem; }
+    .btn-tag-delete { background: none; border: none; color: #dc3545; font-size: 1.2rem; cursor: pointer; padding: 0 .25rem; line-height: 1; }
+    .btn-tag-delete:hover { color: #a71d2a; }
+    .tag-create-form { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; }
+    .tag-create-form label { display: block; font-size: .85rem; color: #666; margin-bottom: .25rem; }
+    .tag-create-form input[type="text"] { width: 100%; padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; margin-bottom: .75rem; }
+    .tag-create-form input[type="color"] { width: 40px; height: 32px; border: 1px solid #e0e0e0; border-radius: 4px; cursor: pointer; padding: 2px; }
+    .tag-create-row { display: flex; gap: .75rem; align-items: flex-end; }
+    .tag-create-row > div:first-child { flex: 1; }
+
+    /* Tag Actions Section */
+    .tag-actions { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+    .tag-actions label { display: block; font-size: .85rem; color: #666; margin-bottom: .25rem; }
+    .tag-actions select { width: 100%; padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; margin-bottom: .5rem; }
+    .tag-action-btns { display: flex; gap: .5rem; }
+    .tag-action-btns button { flex: 1; }
+
+    /* Tag Editor Popup */
+    .tag-editor-popup { position: fixed; z-index: 2000; }
+    .tag-editor-content { background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.2); min-width: 200px; overflow: hidden; }
+    .tag-editor-header { background: #8e44ad; color: #fff; padding: .75rem 1rem; display: flex; justify-content: space-between; align-items: center; font-size: .9rem; font-weight: 600; }
+    .tag-editor-header .close-btn { background: none; border: none; color: #fff; font-size: 1.25rem; cursor: pointer; padding: 0; line-height: 1; }
+    .tag-editor-body { padding: .75rem 1rem; max-height: 300px; overflow-y: auto; }
+    .tag-checkbox { display: flex; align-items: center; gap: .5rem; padding: .35rem 0; cursor: pointer; }
+    .tag-checkbox input { width: 16px; height: 16px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -217,6 +265,7 @@
           <span id="sourceIndicator" class="source-indicator db">DB</span>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="openTagManager()" style="background:#8e44ad;color:#fff;">Tags</button>
           <button class="btn btn-secondary" onclick="openColumnSettings()">Columns</button>
           <button class="btn btn-secondary" onclick="showErrors()">
             Error Log
@@ -282,6 +331,10 @@
         </div>
         <select id="categoryFilter" class="category-filter" onchange="filterTable()">
           <option value="">All Categories</option>
+        </select>
+        <select id="tagFilter" class="tag-filter" onchange="filterByTag(this.value)">
+          <option value="">All Tags</option>
+          <option value="__none__">No Tags</option>
         </select>
         <input type="text" id="excludeInput" class="exclude-input" placeholder="Exclude keywords (comma-separated)" oninput="filterTable()">
         <div class="filter-group">
@@ -391,6 +444,50 @@
             <div class="column-settings-actions">
               <button class="btn btn-secondary" onclick="resetColumns()">Reset to Default</button>
               <button class="btn btn-primary" onclick="closeColumnSettings()">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tag Manager Panel -->
+      <div id="tagManagerPanel" class="tag-manager-panel">
+        <div class="tag-manager-content">
+          <div class="tag-manager-header">
+            <h2>Tag Manager</h2>
+            <button class="close-btn" onclick="closeTagManager()">&times;</button>
+          </div>
+          <div class="tag-manager-body">
+            <p class="settings-hint">Create and manage tags to organize your products.</p>
+
+            <!-- Existing tags -->
+            <div id="tagManagerList"></div>
+
+            <!-- Create new tag -->
+            <div class="tag-create-form">
+              <label>Create New Tag</label>
+              <div class="tag-create-row">
+                <div>
+                  <input type="text" id="newTagName" placeholder="Tag name...">
+                </div>
+                <input type="color" id="newTagColor" value="#6c757d" title="Tag color">
+                <button class="btn btn-primary" onclick="createTag()">Add</button>
+              </div>
+            </div>
+
+            <!-- Apply/Remove tags from selection -->
+            <div class="tag-actions">
+              <label>Apply Tag to Selected (<span id="tagSelectionCount">0</span> selected)</label>
+              <select id="tagActionSelect">
+                <option value="">Select a tag...</option>
+              </select>
+              <div class="tag-action-btns">
+                <button class="btn btn-sync" onclick="applyTagToSelected(document.getElementById('tagActionSelect').value)">Apply Tag</button>
+                <button class="btn btn-secondary" onclick="removeTagFromSelected(document.getElementById('tagActionSelect').value)">Remove Tag</button>
+              </div>
+            </div>
+
+            <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #eee;">
+              <button class="btn btn-primary" style="width:100%;" onclick="closeTagManager()">Done</button>
             </div>
           </div>
         </div>
