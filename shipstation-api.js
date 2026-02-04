@@ -508,6 +508,11 @@ class ShipStationAPI {
       ...additionalData
     };
 
+    // Pick number goes to fulfillmentSku
+    if (additionalData.pick_number) {
+      productData.fulfillmentSku = String(additionalData.pick_number);
+    }
+
     // Add name if not provided (ShipStation requires it)
     if (!productData.name) {
       productData.name = sku;
@@ -518,7 +523,7 @@ class ShipStationAPI {
 
   /**
    * Batch sync warehouse locations from variant data
-   * @param {Array<Object>} variants - Array of {sku, warehouse_location, ...}
+   * @param {Array<Object>} variants - Array of {sku, warehouse_location, pick_number, ...}
    * @returns {Promise<Object>} Sync results
    */
   async batchSyncWarehouseLocations(variants) {
@@ -528,6 +533,8 @@ class ShipStationAPI {
         sku: v.sku.trim(),
         name: v.product_title ? `${v.product_title} - ${v.variant_title || 'Default'}` : v.sku,
         warehouseLocation: v.warehouse_location || '',
+        // Pick number goes to fulfillmentSku field
+        ...(v.pick_number && { fulfillmentSku: String(v.pick_number) }),
         // Include additional fields if available
         ...(v.weight_grams && { weightOz: Math.round(v.weight_grams * 0.03527396195 * 100) / 100 }),
         ...(v.harmonized_system_code && { customsTariffNo: v.harmonized_system_code }),
@@ -537,6 +544,81 @@ class ShipStationAPI {
       }));
 
     return this.batchUpsertProducts(products);
+  }
+
+  /**
+   * Get all products from ShipStation (paginated)
+   * @param {number} maxPages - Maximum number of pages to fetch
+   * @returns {Promise<Array>} Array of all products
+   */
+  async getAllProducts(maxPages = 50) {
+    const allProducts = [];
+    let page = 1;
+    const pageSize = 500;
+
+    console.log('[ShipStation] Fetching all products...');
+
+    while (page <= maxPages) {
+      try {
+        const { data } = await this.client.get('/products', {
+          params: { page, pageSize, showInactive: true }
+        });
+
+        const products = Array.isArray(data?.products) ? data.products :
+                        Array.isArray(data) ? data : [];
+
+        if (products.length === 0) break;
+
+        allProducts.push(...products);
+        console.log(`[ShipStation] Fetched page ${page}: ${products.length} products (total: ${allProducts.length})`);
+
+        if (products.length < pageSize) break;
+        page++;
+
+        // Rate limiting pause
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (err) {
+        if (err.response?.status === 429) {
+          console.log('[ShipStation] Rate limited, waiting 5s...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    console.log(`[ShipStation] Total products fetched: ${allProducts.length}`);
+    return allProducts;
+  }
+
+  /**
+   * Import product names from ShipStation into database
+   * @param {Object} productDb - Product database instance
+   * @returns {Promise<Object>} Import results
+   */
+  async importProductNames(productDb) {
+    const products = await this.getAllProducts();
+    const pool = productDb.getPool();
+
+    let updated = 0;
+    let notFound = 0;
+
+    for (const product of products) {
+      if (!product.sku || !product.name) continue;
+
+      try {
+        const result = await pool.query(
+          'UPDATE variants SET shipstation_name = $1 WHERE sku = $2 AND (shipstation_name IS NULL OR shipstation_name = \'\')',
+          [product.name, product.sku]
+        );
+        if (result.rowCount > 0) updated++;
+        else notFound++;
+      } catch (err) {
+        console.error(`[ShipStation] Error updating ${product.sku}:`, err.message);
+      }
+    }
+
+    return { total: products.length, updated, notFound };
   }
 }
 

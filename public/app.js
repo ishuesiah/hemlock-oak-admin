@@ -80,6 +80,7 @@
   window.promptLoadHsMap = promptLoadHsMap;
   window.syncFromShopify = syncFromShopify;
   window.syncToShipStation = syncToShipStation;
+  window.importShipStationNames = importShipStationNames;
   window.HS_MAP = HS_MAP;
   // New label and filter functions
   window.selectAllVisible = selectAllVisible;
@@ -1068,13 +1069,13 @@
     const loadingText = document.getElementById('loadingText');
 
     loading.classList.add('active');
-    loadingText.textContent = 'Syncing warehouse locations to ShipStation...';
+    loadingText.textContent = 'Syncing to ShipStation (locations + pick numbers)...';
 
     try {
       const response = await fetch('/api/products/sync-shipstation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'dirty' })
+        body: JSON.stringify({ mode: 'full' })
       });
       const result = await response.json();
 
@@ -1086,6 +1087,33 @@
       showStatus(msg, result.failed > 0 ? 'warning' : 'success');
     } catch (error) {
       showStatus('ShipStation sync failed: ' + error.message, 'error');
+    } finally {
+      loading.classList.remove('active');
+    }
+  }
+
+  async function importShipStationNames() {
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
+
+    loading.classList.add('active');
+    loadingText.textContent = 'Importing product names from ShipStation...';
+
+    try {
+      const response = await fetch('/api/products/import-shipstation-names', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error);
+
+      showStatus(`Imported ShipStation names: ${result.updated} updated (${result.total} total products)`, 'success');
+
+      // Refresh products to show new names
+      await refreshProducts();
+    } catch (error) {
+      showStatus('Import failed: ' + error.message, 'error');
     } finally {
       loading.classList.remove('active');
     }

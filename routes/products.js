@@ -666,6 +666,31 @@ router.get('/api/products/shipstation-pending', requireAuthApi, async (req, res)
   }
 });
 
+/**
+ * POST /api/products/import-shipstation-names
+ * Imports product names from ShipStation into database
+ */
+router.post('/api/products/import-shipstation-names', requireAuthApi, async (req, res) => {
+  if (!shipstation) {
+    return res.status(503).json({ error: 'ShipStation API not configured' });
+  }
+
+  console.log('[Products API] Importing product names from ShipStation...');
+
+  try {
+    const results = await shipstation.importProductNames(productDb);
+    console.log(`[Products API] ShipStation import complete: ${results.updated} updated`);
+
+    res.json({
+      success: true,
+      ...results
+    });
+  } catch (err) {
+    console.error('[Products API] ShipStation import error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============================================================================
 // DEBUG ENDPOINTS
 // ============================================================================
