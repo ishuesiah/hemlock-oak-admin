@@ -104,6 +104,36 @@
     .source-indicator { font-size: .75rem; padding: .2rem .5rem; border-radius: 4px; margin-left: 1rem; }
     .source-indicator.db { background: #10b981; color: #fff; }
     .source-indicator.shopify { background: #f39c12; color: #fff; }
+
+    /* Category filter dropdown */
+    .category-filter { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 150px; }
+
+    /* Exclusion input */
+    .exclude-input { padding: .5rem 1rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 200px; }
+
+    /* Selected count badge */
+    .selected-count { background: #e8f6ff; padding: .5rem 1rem; border-radius: 6px; color: #2980b9; font-weight: 600; font-size: .85rem; }
+
+    /* Label buttons */
+    .btn-label { background: #8e44ad; color: #fff; }
+    .btn-label:hover { background: #7d3c98; }
+    .btn-label:disabled { background: #bbb; cursor: not-allowed; }
+
+    /* Label Preview Modal */
+    .label-preview { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.8); z-index: 1000; overflow: auto; padding: 20px; }
+    .label-preview.active { display: flex; align-items: center; justify-content: center; }
+    .preview-content { background: #fff; max-width: 500px; width: 100%; border-radius: 12px; overflow: hidden; }
+    .preview-header { background: #2c3e50; color: #fff; padding: 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+    .preview-header h2 { margin: 0; font-size: 1.25rem; }
+    .close-btn { background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1; }
+    .preview-body { padding: 1.5rem; }
+    .label-sample { border: 2px dashed #ddd; padding: 20px; text-align: center; margin-bottom: 20px; background: #fafafa; border-radius: 8px; }
+    .label-sample .pick { font-size: 48px; font-weight: 700; font-family: 'Courier New', monospace; color: #2c3e50; }
+    .label-sample .sku { font-size: 14px; color: #333; margin: 5px 0; }
+    .label-sample .name { font-size: 12px; color: #666; }
+    .preview-info { font-size: .9rem; color: #666; margin-bottom: 1rem; }
+    .preview-actions { display: flex; gap: 10px; }
+    .preview-actions button { flex: 1; }
   </style>
 </head>
 <body>
@@ -185,11 +215,15 @@
         </div>
       </div>
 
-      <!-- Controls -->
+      <!-- Controls Row 1: Search, Category, Exclude -->
       <div class="controls">
         <div class="search-box">
           <input type="text" id="searchInput" placeholder="Search products, SKUs, variants..." onkeyup="filterTable()">
         </div>
+        <select id="categoryFilter" class="category-filter" onchange="filterTable()">
+          <option value="">All Categories</option>
+        </select>
+        <input type="text" id="excludeInput" class="exclude-input" placeholder="Exclude keywords (comma-separated)" oninput="filterTable()">
         <div class="filter-group">
           <label><input type="checkbox" id="showDuplicatesOnly"> Dup SKUs</label>
           <label><input type="checkbox" id="showMissingOnly"> Missing SKUs</label>
@@ -198,6 +232,10 @@
           <label><input type="checkbox" id="showMissingLocsOnly"> Missing Location</label>
           <label><input type="checkbox" id="showModifiedOnly"> Modified</label>
         </div>
+      </div>
+
+      <!-- Controls Row 2: Actions & Label Generation -->
+      <div class="controls" style="border-top: none; padding-top: 0;">
         <div class="header-actions">
           <button class="btn btn-sync" onclick="syncFromShopify()">Sync from Shopify</button>
           <button class="btn btn-secondary" onclick="syncToShipStation()">Sync to ShipStation</button>
@@ -206,6 +244,15 @@
           <button class="btn btn-primary" id="saveBtn" onclick="saveChanges()">Save Changes</button>
           <input type="file" id="hsMapFile" accept=".csv" style="display:none">
           <button class="btn btn-secondary" onclick="promptLoadHsMap()">Load HS Map</button>
+        </div>
+        <div class="header-actions">
+          <span class="selected-count" id="selectedCount">0 selected</span>
+          <button class="btn btn-label" id="labelBtn1" onclick="generateDetailedLabels()" disabled>Labels (8/pg)</button>
+          <button class="btn btn-label" id="labelBtn2" onclick="generateLargeQRLabels()" disabled>Large+QR (3/pg)</button>
+          <button class="btn btn-label" id="labelBtn3" onclick="generateQRLabels()" disabled>QR (6/pg)</button>
+          <button class="btn btn-label" id="labelBtn4" onclick="generateQRInventoryLabels()" disabled>QR Inv (6/pg)</button>
+          <button class="btn btn-secondary" onclick="selectAllVisible()">Select Visible</button>
+          <button class="btn btn-secondary" onclick="clearSelection()">Clear</button>
         </div>
       </div>
 
@@ -245,6 +292,28 @@
           <button class="btn btn-secondary" style="background:#fff;color:#333" onclick="closeErrors()">X</button>
         </div>
         <div class="error-panel-content" id="errorPanelContent"></div>
+      </div>
+
+      <!-- Label Preview Modal -->
+      <div id="labelPreview" class="label-preview">
+        <div class="preview-content">
+          <div class="preview-header">
+            <h2>Label Preview</h2>
+            <button class="close-btn" onclick="closeLabelPreview()">&times;</button>
+          </div>
+          <div class="preview-body">
+            <div class="label-sample" id="labelSample">
+              <div class="pick">1234</div>
+              <div class="sku">SKU-EXAMPLE</div>
+              <div class="name">Product Name - Variant</div>
+            </div>
+            <p class="preview-info" id="previewInfo">Ready to generate labels for 0 selected variants.</p>
+            <div class="preview-actions">
+              <button class="btn btn-secondary" onclick="closeLabelPreview()">Cancel</button>
+              <button class="btn btn-primary" id="downloadLabelsBtn" onclick="downloadLabels()">Download Labels</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

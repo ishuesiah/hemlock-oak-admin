@@ -13,6 +13,9 @@
   let dataSource = 'db';       // 'db' or 'shopify'
   let needsSync = false;
 
+  // Track current label generation type
+  let currentLabelType = null;
+
   // Expose functions used by inline HTML (buttons/onclicks)
   window.refreshProducts = refreshProducts;
   window.saveChanges = saveChanges;
@@ -28,6 +31,15 @@
   window.syncFromShopify = syncFromShopify;
   window.syncToShipStation = syncToShipStation;
   window.HS_MAP = HS_MAP;
+  // New label and filter functions
+  window.selectAllVisible = selectAllVisible;
+  window.clearSelection = clearSelection;
+  window.generateDetailedLabels = generateDetailedLabels;
+  window.generateLargeQRLabels = generateLargeQRLabels;
+  window.generateQRLabels = generateQRLabels;
+  window.generateQRInventoryLabels = generateQRInventoryLabels;
+  window.closeLabelPreview = closeLabelPreview;
+  window.downloadLabels = downloadLabels;
 
   // ===== Boot ===============================================================
   document.addEventListener('DOMContentLoaded', () => {
@@ -143,6 +155,8 @@
 
       renderTable();
       updateStats();
+      populateCategoryFilter();
+      updateLabelButtons();
 
       statusBar.className = 'status-bar active success';
       statusMessage.textContent = `Loaded ${products.length} products (${products.reduce((s, p) => s + p.variants.length, 0)} variants) from ${dataSource}`;
@@ -270,6 +284,7 @@
         row.dataset.sku = (sku || '').toLowerCase();
         row.dataset.pickNumber = (pickNumber || '').toLowerCase();
         row.dataset.warehouseLocation = (warehouseLocation || '').toLowerCase();
+        row.dataset.productType = (product.product_type || '').toLowerCase();
         row.dataset.isDuplicateSku = isDuplicateSku ? '1' : '0';
         row.dataset.isMissingSku = isMissingSku ? '1' : '0';
         row.dataset.isDuplicatePick = isDuplicatePick ? '1' : '0';
@@ -286,6 +301,7 @@
     const id = String(el.dataset.variantId);
     if (el.checked) selectedIds.add(id);
     else selectedIds.delete(id);
+    updateLabelButtons();
   }
 
   function makeEditable(span, variantId, field) {
@@ -456,6 +472,10 @@
 
   function filterTable() {
     const searchValue = document.getElementById('searchInput').value.toLowerCase();
+    const categoryValue = document.getElementById('categoryFilter')?.value.toLowerCase() || '';
+    const excludeValue = document.getElementById('excludeInput')?.value.toLowerCase() || '';
+    const excludeKeywords = excludeValue.split(',').map(k => k.trim()).filter(k => k.length > 0);
+
     const showDuplicates = document.getElementById('showDuplicatesOnly').checked;
     const showMissing = document.getElementById('showMissingOnly').checked;
     const showDupPicks = document.getElementById('showDupPicksOnly').checked;
@@ -476,13 +496,30 @@
 
       let showRow = true;
 
-      if (searchValue) {
+      // Category filter
+      if (showRow && categoryValue) {
+        showRow = row.dataset.productType === categoryValue;
+      }
+
+      // Search filter
+      if (showRow && searchValue) {
         const searchableText = row.dataset.productTitle + ' ' +
                                row.dataset.variantTitle + ' ' +
                                row.dataset.sku + ' ' +
                                row.dataset.pickNumber + ' ' +
                                row.dataset.warehouseLocation;
         showRow = searchableText.includes(searchValue);
+      }
+
+      // Exclusion filter
+      if (showRow && excludeKeywords.length > 0) {
+        const searchableText = row.dataset.productTitle + ' ' +
+                               row.dataset.variantTitle + ' ' +
+                               row.dataset.sku + ' ' +
+                               row.dataset.pickNumber + ' ' +
+                               row.dataset.warehouseLocation;
+        const matchesExclude = excludeKeywords.some(keyword => searchableText.includes(keyword));
+        if (matchesExclude) showRow = false;
       }
 
       // Filter logic (mutually exclusive)
@@ -987,6 +1024,393 @@
     }
     while (rows.length && rows[rows.length-1].every(c => String(c).trim() === '')) rows.pop();
     return rows;
+  }
+
+  // ===== Category Filter =====================================================
+  function populateCategoryFilter() {
+    const categoryFilter = document.getElementById('categoryFilter');
+    if (!categoryFilter) return;
+
+    // Extract unique categories from products
+    const categories = [...new Set(products.map(p => p.product_type).filter(c => c))].sort();
+
+    // Clear existing options except "All Categories"
+    categoryFilter.innerHTML = '<option value="">All Categories</option>';
+
+    // Add category options
+    categories.forEach(cat => {
+      const option = document.createElement('option');
+      option.value = cat.toLowerCase();
+      option.textContent = cat;
+      categoryFilter.appendChild(option);
+    });
+  }
+
+  // ===== Label Selection & Generation ========================================
+  function updateLabelButtons() {
+    const hasSelection = selectedIds.size > 0;
+    document.querySelectorAll('[id^="labelBtn"]').forEach(btn => {
+      btn.disabled = !hasSelection;
+    });
+    document.getElementById('selectedCount').textContent = `${selectedIds.size} selected`;
+  }
+
+  function selectAllVisible() {
+    const rows = document.querySelectorAll('#productTableBody tr');
+    rows.forEach(row => {
+      if (row.style.display !== 'none') {
+        const variantId = row.dataset.variantId;
+        selectedIds.add(variantId);
+        const cb = row.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = true;
+      }
+    });
+    updateLabelButtons();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    document.querySelectorAll('#productTableBody input[type="checkbox"]').forEach(cb => {
+      cb.checked = false;
+    });
+    updateLabelButtons();
+  }
+
+  function getSelectedVariantsWithPick() {
+    // Get all variants that are selected AND have a pick number
+    const result = [];
+    products.forEach(p => {
+      p.variants.forEach(v => {
+        const vid = String(v.id);
+        if (!selectedIds.has(vid)) return;
+
+        const staged = modifiedData.get(vid) || {};
+        const pickNumber = staged.pick_number !== undefined ? staged.pick_number : v.pick_number;
+        if (!pickNumber) return; // Skip variants without pick number
+
+        result.push({
+          pick: pickNumber,
+          sku: staged.sku !== undefined ? staged.sku : v.sku || '',
+          name: (v.title && v.title !== 'Default') ? `${p.title} - ${v.title}` : p.title,
+          category: p.product_type || 'Uncategorized',
+          productId: p.id,
+          variantId: v.id,
+          warehouseLocation: staged.warehouse_location !== undefined ? staged.warehouse_location : v.warehouse_location || ''
+        });
+      });
+    });
+
+    // Sort by pick number
+    result.sort((a, b) => {
+      const numA = parseInt(a.pick) || 0;
+      const numB = parseInt(b.pick) || 0;
+      return numA - numB;
+    });
+
+    return result;
+  }
+
+  function showLabelPreview(labelType) {
+    currentLabelType = labelType;
+    const selected = getSelectedVariantsWithPick();
+
+    if (selected.length === 0) {
+      showStatus('No selected variants have pick numbers. Labels require pick numbers.', 'warning');
+      return;
+    }
+
+    const preview = document.getElementById('labelPreview');
+    const sample = document.getElementById('labelSample');
+    const info = document.getElementById('previewInfo');
+
+    // Show first selected product as sample
+    const first = selected[0];
+    sample.innerHTML = `
+      <div class="pick">${first.pick}</div>
+      <div class="sku">${first.sku}</div>
+      <div class="name">${first.name}</div>
+    `;
+
+    const typeNames = {
+      'detailed': 'Detailed Labels (8 per page)',
+      'largeqr': 'Large Labels + QR (3 per page)',
+      'qr': 'QR Labels (6 per page)',
+      'qrinv': 'QR Inventory Labels (6 per page)'
+    };
+
+    info.textContent = `Ready to generate ${typeNames[labelType]} for ${selected.length} variants with pick numbers.`;
+
+    preview.classList.add('active');
+  }
+
+  function closeLabelPreview() {
+    document.getElementById('labelPreview').classList.remove('active');
+    currentLabelType = null;
+  }
+
+  function generateDetailedLabels() {
+    showLabelPreview('detailed');
+  }
+
+  function generateLargeQRLabels() {
+    showLabelPreview('largeqr');
+  }
+
+  function generateQRLabels() {
+    showLabelPreview('qr');
+  }
+
+  function generateQRInventoryLabels() {
+    showLabelPreview('qrinv');
+  }
+
+  function downloadLabels() {
+    const selected = getSelectedVariantsWithPick();
+    if (selected.length === 0) {
+      closeLabelPreview();
+      return;
+    }
+
+    let html = '';
+    switch (currentLabelType) {
+      case 'detailed':
+        html = generateDetailedLabelsHTML(selected);
+        break;
+      case 'largeqr':
+        html = generateLargeQRLabelsHTML(selected);
+        break;
+      case 'qr':
+        html = generateQRLabelsHTML(selected);
+        break;
+      case 'qrinv':
+        html = generateQRInventoryLabelsHTML(selected);
+        break;
+      default:
+        closeLabelPreview();
+        return;
+    }
+
+    // Download as HTML file
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const date = new Date().toISOString().slice(0, 10);
+    a.download = `shelf-labels-${currentLabelType}-${date}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showStatus(`Downloaded ${selected.length} labels (${currentLabelType})`, 'success');
+    closeLabelPreview();
+  }
+
+  // ===== Label HTML Generators ===============================================
+
+  function generateDetailedLabelsHTML(items) {
+    // 8 labels per 4x6 page
+    const labelsPerPage = 8;
+    const pages = [];
+
+    for (let i = 0; i < items.length; i += labelsPerPage) {
+      const pageItems = items.slice(i, i + labelsPerPage);
+      const labels = pageItems.map(item => `
+        <div class="label">
+          <div class="pick">${item.pick}</div>
+          <div class="sku">${item.sku}</div>
+          <div class="name">${item.name}</div>
+        </div>
+      `).join('');
+      pages.push(`<div class="page">${labels}</div>`);
+    }
+
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Shelf Labels - Detailed</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; }
+  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
+  .label { width: 2in; height: 0.75in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 4px 6px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+  .label:nth-child(2n) { border-right: none; }
+  .pick { font-size: 24pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
+  .sku { font-size: 9pt; color: #333; margin-top: 2px; }
+  .name { font-size: 8pt; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 1.8in; }
+  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head><body>
+<div class="no-print">
+  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
+  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
+</div>
+${pages.join('')}
+</body></html>`;
+  }
+
+  function generateLargeQRLabelsHTML(items) {
+    // 3 labels per 4x6 page
+    const labelsPerPage = 3;
+    const pages = [];
+
+    for (let i = 0; i < items.length; i += labelsPerPage) {
+      const pageItems = items.slice(i, i + labelsPerPage);
+      const labels = pageItems.map(item => {
+        const qrUrl = item.productId && item.variantId
+          ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
+          : '';
+        const qrSrc = qrUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrUrl)}`
+          : '';
+        return `
+          <div class="label">
+            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
+            <div class="info">
+              <div class="pick">${item.pick}</div>
+              <div class="sku">${item.sku}</div>
+              <div class="name">${item.name}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      pages.push(`<div class="page">${labels}</div>`);
+    }
+
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Shelf Labels - Large QR</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; }
+  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-direction: column; }
+  .label { height: 2in; border-bottom: 1px dashed #ccc; padding: 10px; display: flex; align-items: center; gap: 15px; }
+  .qr { width: 0.9in; height: 0.9in; }
+  .qr-placeholder { width: 0.9in; height: 0.9in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 10pt; color: #999; }
+  .info { flex: 1; }
+  .pick { font-size: 54pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
+  .sku { font-size: 11pt; font-weight: 600; color: #333; margin-top: 4px; }
+  .name { font-size: 9pt; color: #666; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 2.5in; }
+  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head><body>
+<div class="no-print">
+  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
+  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
+</div>
+${pages.join('')}
+</body></html>`;
+  }
+
+  function generateQRLabelsHTML(items) {
+    // 6 labels per 4x6 page (QR + Pick only)
+    const labelsPerPage = 6;
+    const pages = [];
+
+    for (let i = 0; i < items.length; i += labelsPerPage) {
+      const pageItems = items.slice(i, i + labelsPerPage);
+      const labels = pageItems.map(item => {
+        const qrUrl = item.productId && item.variantId
+          ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
+          : '';
+        const qrSrc = qrUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`
+          : '';
+        return `
+          <div class="label">
+            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
+            <div class="pick">${item.pick}</div>
+          </div>
+        `;
+      }).join('');
+      pages.push(`<div class="page">${labels}</div>`);
+    }
+
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Shelf Labels - QR</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; }
+  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
+  .label { width: 2in; height: 1in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 5px; display: flex; align-items: center; gap: 8px; }
+  .label:nth-child(2n) { border-right: none; }
+  .qr { width: 0.85in; height: 0.85in; }
+  .qr-placeholder { width: 0.85in; height: 0.85in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999; }
+  .pick { font-size: 36pt; font-weight: 700; font-family: 'Courier New', monospace; }
+  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head><body>
+<div class="no-print">
+  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
+  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
+</div>
+${pages.join('')}
+</body></html>`;
+  }
+
+  function generateQRInventoryLabelsHTML(items) {
+    // 6 labels per 4x6 page - QR links to SKU search
+    const labelsPerPage = 6;
+    const pages = [];
+
+    for (let i = 0; i < items.length; i += labelsPerPage) {
+      const pageItems = items.slice(i, i + labelsPerPage);
+      const labels = pageItems.map(item => {
+        // QR links to inventory search by SKU
+        const qrUrl = item.sku
+          ? `https://admin.shopify.com/store/hemlock-oak/products?query=${encodeURIComponent(item.sku)}`
+          : '';
+        const qrSrc = qrUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`
+          : '';
+        return `
+          <div class="label">
+            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
+            <div class="info">
+              <div class="pick">${item.pick}</div>
+              <div class="sku">${item.sku}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      pages.push(`<div class="page">${labels}</div>`);
+    }
+
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Shelf Labels - QR Inventory</title>
+<style>
+  @page { size: 4in 6in; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; }
+  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
+  .label { width: 2in; height: 1in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 5px; display: flex; align-items: center; gap: 8px; }
+  .label:nth-child(2n) { border-right: none; }
+  .qr { width: 0.85in; height: 0.85in; }
+  .qr-placeholder { width: 0.85in; height: 0.85in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999; }
+  .info { display: flex; flex-direction: column; justify-content: center; }
+  .pick { font-size: 32pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
+  .sku { font-size: 8pt; color: #333; margin-top: 2px; }
+  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head><body>
+<div class="no-print">
+  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
+  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
+</div>
+${pages.join('')}
+</body></html>`;
   }
 
 })();
