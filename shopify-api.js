@@ -489,10 +489,14 @@ class ShopifyAPI {
     const { namespace: pickNs, key: pickKey } = this.metafieldConfig.pick_number;
     const { namespace: locNs, key: locKey } = this.metafieldConfig.warehouse_location;
 
+    // Debug: Log the namespace/key being used
+    console.log(`[Shopify API] DEBUG: Looking for metafields: "${pickNs}.${pickKey}" and "${locNs}.${locKey}"`);
+
     const metafieldsMap = new Map(); // variantId -> { pick_number, warehouse_location, pick_metafield_id, location_metafield_id }
     let hasNextPage = true;
     let cursor = null;
     let pageCount = 0;
+    let totalMetafieldsFound = 0;
 
     while (hasNextPage) {
       await this.rateLimit();
@@ -549,8 +553,15 @@ class ShopifyAPI {
             location_metafield_id: null
           };
 
+          // Debug: Log first variant with metafields
+          if (variant.metafields.edges.length > 0 && totalMetafieldsFound < 3) {
+            console.log(`[Shopify API] DEBUG: Sample variant ${variant.sku} has ${variant.metafields.edges.length} metafields:`,
+              JSON.stringify(variant.metafields.edges.map(e => ({ ns: e.node.namespace, key: e.node.key, val: e.node.value }))));
+          }
+
           for (const mfEdge of variant.metafields.edges) {
             const mf = mfEdge.node;
+            totalMetafieldsFound++;
             if (mf.namespace === pickNs && mf.key === pickKey) {
               metafieldData.pick_number = mf.value;
               metafieldData.pick_metafield_id = mf.legacyResourceId;
@@ -585,7 +596,8 @@ class ShopifyAPI {
       if (mf.warehouse_location) withLoc++;
     });
     console.log(`[Shopify API] Fetched metafields for ${metafieldsMap.size} variants in ${elapsed}s`);
-    console.log(`[Shopify API] DEBUG: Found ${withPick} with pick_number, ${withLoc} with warehouse_location`);
+    console.log(`[Shopify API] DEBUG: Total raw metafield entries found: ${totalMetafieldsFound}`);
+    console.log(`[Shopify API] DEBUG: Matched ${withPick} with pick_number, ${withLoc} with warehouse_location`);
 
     return metafieldsMap;
   }
