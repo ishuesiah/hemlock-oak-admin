@@ -40,6 +40,11 @@
   window.generateQRInventoryLabels = generateQRInventoryLabels;
   window.closeLabelPreview = closeLabelPreview;
   window.downloadLabels = downloadLabels;
+  window.generatePickNumbers = generatePickNumbers;
+  window.handleCheckboxClick = handleCheckboxClick;
+
+  // Track last clicked checkbox index for shift+click
+  let lastCheckedIndex = null;
 
   // ===== Boot ===============================================================
   document.addEventListener('DOMContentLoaded', () => {
@@ -202,7 +207,7 @@
         // Select (persist checked state)
         const checkCell = row.insertCell();
         checkCell.innerHTML =
-          `<input type="checkbox" class="select-for-update" data-variant-id="${variantId}" onchange="toggleSelect(this)">`;
+          `<input type="checkbox" class="select-for-update" data-variant-id="${variantId}" onclick="handleCheckboxClick(event, this)">`;
         const cb = checkCell.querySelector('input');
         if (selectedIds.has(variantId)) cb.checked = true;
 
@@ -301,6 +306,38 @@
     const id = String(el.dataset.variantId);
     if (el.checked) selectedIds.add(id);
     else selectedIds.delete(id);
+    updateLabelButtons();
+  }
+
+  function handleCheckboxClick(event, el) {
+    const allCheckboxes = Array.from(document.querySelectorAll('#productTableBody input[type="checkbox"]'));
+    const currentIndex = allCheckboxes.indexOf(el);
+
+    // Shift+click for range selection
+    if (event.shiftKey && lastCheckedIndex !== null && lastCheckedIndex !== currentIndex) {
+      const start = Math.min(lastCheckedIndex, currentIndex);
+      const end = Math.max(lastCheckedIndex, currentIndex);
+      const shouldCheck = el.checked;
+
+      for (let i = start; i <= end; i++) {
+        const cb = allCheckboxes[i];
+        // Only select visible rows
+        const row = cb.closest('tr');
+        if (row && row.style.display !== 'none') {
+          cb.checked = shouldCheck;
+          const id = String(cb.dataset.variantId);
+          if (shouldCheck) selectedIds.add(id);
+          else selectedIds.delete(id);
+        }
+      }
+    } else {
+      // Normal click
+      const id = String(el.dataset.variantId);
+      if (el.checked) selectedIds.add(id);
+      else selectedIds.delete(id);
+    }
+
+    lastCheckedIndex = currentIndex;
     updateLabelButtons();
   }
 
@@ -1052,6 +1089,8 @@
     document.querySelectorAll('[id^="labelBtn"]').forEach(btn => {
       btn.disabled = !hasSelection;
     });
+    const genPickBtn = document.getElementById('genPickBtn');
+    if (genPickBtn) genPickBtn.disabled = !hasSelection;
     document.getElementById('selectedCount').textContent = `${selectedIds.size} selected`;
   }
 
@@ -1070,6 +1109,7 @@
 
   function clearSelection() {
     selectedIds.clear();
+    lastCheckedIndex = null;
     document.querySelectorAll('#productTableBody input[type="checkbox"]').forEach(cb => {
       cb.checked = false;
     });
@@ -1146,6 +1186,76 @@
   function closeLabelPreview() {
     document.getElementById('labelPreview').classList.remove('active');
     currentLabelType = null;
+  }
+
+  // ===== Generate Pick Numbers ===============================================
+  async function generatePickNumbers() {
+    if (selectedIds.size === 0) {
+      showStatus('No variants selected', 'warning');
+      return;
+    }
+
+    // Get selected variants that DON'T have pick numbers
+    const variantsNeedingPick = [];
+    products.forEach(p => {
+      p.variants.forEach(v => {
+        const vid = String(v.id);
+        if (!selectedIds.has(vid)) return;
+
+        const staged = modifiedData.get(vid) || {};
+        const pickNumber = staged.pick_number !== undefined ? staged.pick_number : v.pick_number;
+        if (!pickNumber || pickNumber.trim() === '') {
+          variantsNeedingPick.push({
+            id: vid,
+            sku: v.sku
+          });
+        }
+      });
+    });
+
+    if (variantsNeedingPick.length === 0) {
+      showStatus('All selected variants already have pick numbers', 'warning');
+      return;
+    }
+
+    const confirmMsg = `Generate pick numbers for ${variantsNeedingPick.length} variants without pick numbers?`;
+    if (!confirm(confirmMsg)) return;
+
+    showStatus(`Generating pick numbers for ${variantsNeedingPick.length} variants...`, 'info');
+
+    try {
+      const response = await fetchJSON('/products/api/products/generate-pick-numbers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantIds: variantsNeedingPick.map(v => v.id) })
+      });
+
+      if (response.success) {
+        // Update local state with the new pick numbers
+        response.assignments.forEach(a => {
+          const vid = String(a.variantId);
+          // Update the products array
+          for (const p of products) {
+            for (const v of p.variants) {
+              if (String(v.id) === vid) {
+                v.pick_number = String(a.pickNumber);
+                break;
+              }
+            }
+          }
+        });
+
+        showStatus(`Generated ${response.assigned} pick numbers successfully!`, 'success');
+
+        // Refresh the table to show new pick numbers
+        renderTable();
+      } else {
+        showStatus(response.message || 'Failed to generate pick numbers', 'error');
+      }
+    } catch (err) {
+      console.error('Generate pick numbers error:', err);
+      showStatus(`Error: ${err.message}`, 'error');
+    }
   }
 
   function generateDetailedLabels() {

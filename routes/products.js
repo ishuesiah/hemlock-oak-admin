@@ -415,6 +415,88 @@ router.get('/api/products/missing', requireAuthApi, async (req, res) => {
 });
 
 /**
+ * POST /api/products/generate-pick-numbers
+ * Generates sequential pick numbers for selected variants that don't have one
+ * Body: { variantIds: [id1, id2, ...] }
+ */
+router.post('/api/products/generate-pick-numbers', requireAuthApi, async (req, res) => {
+  try {
+    const { variantIds } = req.body || {};
+    if (!Array.isArray(variantIds) || variantIds.length === 0) {
+      return res.status(400).json({ error: 'No variant IDs provided' });
+    }
+
+    const pool = productDb.getPool();
+
+    // Get the current max pick number
+    const maxResult = await pool.query(`
+      SELECT MAX(CAST(pick_number AS INTEGER)) as max_pick
+      FROM variants
+      WHERE pick_number ~ '^[0-9]+$'
+    `);
+    let nextPick = (maxResult.rows[0]?.max_pick || 0) + 1;
+
+    // Get selected variants that don't have pick numbers
+    const variantsResult = await pool.query(`
+      SELECT shopify_variant_id, sku, pick_number
+      FROM variants
+      WHERE shopify_variant_id = ANY($1)
+        AND (pick_number IS NULL OR pick_number = '')
+      ORDER BY sku
+    `, [variantIds.map(id => String(id))]);
+
+    if (variantsResult.rows.length === 0) {
+      return res.json({
+        success: true,
+        message: 'All selected variants already have pick numbers',
+        assigned: 0,
+        assignments: []
+      });
+    }
+
+    // Check for duplicates - make sure the pick numbers we're about to assign don't already exist
+    const existingPicks = await pool.query(`
+      SELECT pick_number FROM variants WHERE pick_number IS NOT NULL
+    `);
+    const existingSet = new Set(existingPicks.rows.map(r => r.pick_number));
+
+    // Assign pick numbers
+    const assignments = [];
+    for (const variant of variantsResult.rows) {
+      // Find next available pick number
+      while (existingSet.has(String(nextPick))) {
+        nextPick++;
+      }
+
+      await pool.query(
+        'UPDATE variants SET pick_number = $1 WHERE shopify_variant_id = $2',
+        [String(nextPick), variant.shopify_variant_id]
+      );
+
+      assignments.push({
+        variantId: variant.shopify_variant_id,
+        sku: variant.sku,
+        pickNumber: nextPick
+      });
+
+      existingSet.add(String(nextPick));
+      nextPick++;
+    }
+
+    console.log(`[Products API] Generated ${assignments.length} pick numbers, starting from ${assignments[0]?.pickNumber}`);
+
+    res.json({
+      success: true,
+      assigned: assignments.length,
+      assignments
+    });
+  } catch (err) {
+    console.error('[Products API] Generate pick numbers error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * POST /api/products/validate-pick-numbers
  * Validates pick numbers for uniqueness before save
  * Body: { updates: [{ id, pick_number }] }
