@@ -369,6 +369,7 @@ async function getAllProductsWithVariants(options = {}) {
       country_code_of_origin: v.country_code_of_origin,
       pick_number: v.pick_number,
       warehouse_location: v.warehouse_location,
+      shipstation_name: v.shipstation_name,
       pick_metafield_id: v.pick_metafield_id,
       location_metafield_id: v.location_metafield_id,
       last_synced_at: v.last_synced_at,
