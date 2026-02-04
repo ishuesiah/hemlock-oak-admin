@@ -16,6 +16,56 @@
   // Track current label generation type
   let currentLabelType = null;
 
+  // ===== Column Configuration ===============================================
+  // Default column definitions
+  const DEFAULT_COLUMNS = [
+    { id: 'select', label: 'Select', visible: true, fixed: true },
+    { id: 'status', label: 'Status', visible: true },
+    { id: 'productTitle', label: 'Product Title', visible: true },
+    { id: 'variant', label: 'Variant', visible: true },
+    { id: 'shipstationName', label: 'ShipStation Name', visible: false },
+    { id: 'sku', label: 'SKU', visible: true },
+    { id: 'pickNumber', label: 'Pick #', visible: true },
+    { id: 'location', label: 'Location', visible: true },
+    { id: 'price', label: 'Price', visible: true },
+    { id: 'inventory', label: 'Inventory', visible: true },
+    { id: 'weight', label: 'Weight (g)', visible: true },
+    { id: 'hsCode', label: 'HS Code', visible: true },
+    { id: 'country', label: 'Country', visible: true }
+  ];
+
+  let columnConfig = loadColumnConfig();
+
+  function loadColumnConfig() {
+    try {
+      const saved = localStorage.getItem('productManagerColumns');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Merge with defaults to handle new columns
+        const merged = DEFAULT_COLUMNS.map(def => {
+          const saved = parsed.find(c => c.id === def.id);
+          return saved ? { ...def, visible: saved.visible } : def;
+        });
+        // Reorder based on saved order
+        const ordered = [];
+        parsed.forEach(savedCol => {
+          const col = merged.find(c => c.id === savedCol.id);
+          if (col) ordered.push(col);
+        });
+        // Add any new columns not in saved config
+        merged.forEach(col => {
+          if (!ordered.find(c => c.id === col.id)) ordered.push(col);
+        });
+        return ordered;
+      }
+    } catch (e) { console.error('Error loading column config:', e); }
+    return [...DEFAULT_COLUMNS];
+  }
+
+  function saveColumnConfig() {
+    localStorage.setItem('productManagerColumns', JSON.stringify(columnConfig));
+  }
+
   // Expose functions used by inline HTML (buttons/onclicks)
   window.refreshProducts = refreshProducts;
   window.saveChanges = saveChanges;
@@ -42,6 +92,11 @@
   window.downloadLabels = downloadLabels;
   window.generatePickNumbers = generatePickNumbers;
   window.handleCheckboxClick = handleCheckboxClick;
+  // Column settings functions
+  window.openColumnSettings = openColumnSettings;
+  window.closeColumnSettings = closeColumnSettings;
+  window.toggleColumn = toggleColumn;
+  window.resetColumns = resetColumns;
 
   // Track last clicked checkbox index for shift+click
   let lastCheckedIndex = null;
@@ -176,7 +231,11 @@
 
   function renderTable() {
     const tbody = document.getElementById('productTableBody');
+    const thead = document.querySelector('#productTable thead tr');
     tbody.innerHTML = '';
+
+    // Render table header based on column config
+    renderTableHeader(thead);
 
     products.forEach(product => {
       product.variants.forEach(variant => {
@@ -196,6 +255,7 @@
         const country = getVal('country_code_of_origin', '') || '';
         const pickNumber = getVal('pick_number', '') || '';
         const warehouseLocation = getVal('warehouse_location', '') || '';
+        const shipstationName = variant.shipstation_name || '';
 
         // Status flags
         const isDuplicateSku = !!sku && duplicateSkus.has(sku);
@@ -204,83 +264,98 @@
         const isMissingPick = !pickNumber;
         const isMissingLocation = !warehouseLocation;
 
-        // Select (persist checked state)
-        const checkCell = row.insertCell();
-        checkCell.innerHTML =
-          `<input type="checkbox" class="select-for-update" data-variant-id="${variantId}" onclick="handleCheckboxClick(event, this)">`;
-        const cb = checkCell.querySelector('input');
-        if (selectedIds.has(variantId)) cb.checked = true;
+        // Render cells based on column config
+        columnConfig.forEach(col => {
+          if (!col.visible) return;
 
-        // Status badges (stacked if multiple)
-        const statusCell = row.insertCell();
-        const badges = [];
-        if (isMissingSku) badges.push('<span class="missing-indicator">NO SKU</span>');
-        else if (isDuplicateSku) badges.push('<span class="duplicate-indicator">DUP SKU</span>');
-        if (isDuplicatePick) badges.push('<span class="dup-pick-indicator">DUP PICK</span>');
-        if (isMissingPick) badges.push('<span class="miss-pick-indicator">NO PICK</span>');
-        if (isMissingLocation) badges.push('<span class="miss-loc-indicator">NO LOC</span>');
+          const cell = row.insertCell();
+          cell.dataset.colId = col.id;
 
-        if (badges.length > 1) {
-          statusCell.innerHTML = `<div class="badge-stack">${badges.join('')}</div>`;
-        } else if (badges.length === 1) {
-          statusCell.innerHTML = badges[0];
-        }
+          switch (col.id) {
+            case 'select':
+              cell.innerHTML = `<input type="checkbox" class="select-for-update" data-variant-id="${variantId}" onclick="handleCheckboxClick(event, this)">`;
+              const cb = cell.querySelector('input');
+              if (selectedIds.has(variantId)) cb.checked = true;
+              break;
 
-        // Titles
-        row.insertCell().textContent = product.title;
-        row.insertCell().textContent = variant.title || 'Default';
+            case 'status':
+              const badges = [];
+              if (isMissingSku) badges.push('<span class="missing-indicator">NO SKU</span>');
+              else if (isDuplicateSku) badges.push('<span class="duplicate-indicator">DUP SKU</span>');
+              if (isDuplicatePick) badges.push('<span class="dup-pick-indicator">DUP PICK</span>');
+              if (isMissingPick) badges.push('<span class="miss-pick-indicator">NO PICK</span>');
+              if (isMissingLocation) badges.push('<span class="miss-loc-indicator">NO LOC</span>');
+              if (badges.length > 1) {
+                cell.innerHTML = `<div class="badge-stack">${badges.join('')}</div>`;
+              } else if (badges.length === 1) {
+                cell.innerHTML = badges[0];
+              }
+              break;
 
-        // SKU (editable)
-        const skuCell = row.insertCell();
-        skuCell.className = (isDuplicateSku || isMissingSku) ? 'editable sku-error' : 'editable';
-        skuCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'sku')" data-variant-id="${variantId}" data-field="sku" class="editable-span">${sku}</span>`;
-        if (staged.sku !== undefined) skuCell.classList.add('cell-modified');
+            case 'productTitle':
+              cell.textContent = product.title;
+              break;
 
-        // Pick Number (editable)
-        const pickCell = row.insertCell();
-        pickCell.className = isDuplicatePick ? 'editable sku-error' : 'editable';
-        pickCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>`;
-        if (staged.pick_number !== undefined) pickCell.classList.add('cell-modified');
+            case 'variant':
+              cell.textContent = variant.title || 'Default';
+              break;
 
-        // Warehouse Location (editable)
-        const locCell = row.insertCell();
-        locCell.className = 'editable';
-        locCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'warehouse_location')">${warehouseLocation}</span>`;
-        if (staged.warehouse_location !== undefined) locCell.classList.add('cell-modified');
+            case 'shipstationName':
+              cell.textContent = shipstationName;
+              cell.style.maxWidth = '250px';
+              cell.style.overflow = 'hidden';
+              cell.style.textOverflow = 'ellipsis';
+              cell.style.whiteSpace = 'nowrap';
+              cell.title = shipstationName;
+              break;
 
-        // Price (editable)
-        const priceCell = row.insertCell();
-        priceCell.className = 'editable';
-        priceCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'price')">${price !== '' ? '$' + price : ''}</span>`;
-        if (staged.price !== undefined) priceCell.classList.add('cell-modified');
+            case 'sku':
+              cell.className = (isDuplicateSku || isMissingSku) ? 'editable sku-error' : 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'sku')" data-variant-id="${variantId}" data-field="sku" class="editable-span">${sku}</span>`;
+              if (staged.sku !== undefined) cell.classList.add('cell-modified');
+              break;
 
-        // Inventory (read-only)
-        row.insertCell().textContent = variant.inventory_quantity || '0';
+            case 'pickNumber':
+              cell.className = isDuplicatePick ? 'editable sku-error' : 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>`;
+              if (staged.pick_number !== undefined) cell.classList.add('cell-modified');
+              break;
 
-        // Weight (editable)
-        const weightCell = row.insertCell();
-        weightCell.className = 'editable';
-        weightCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'weight')">${weight !== '' ? weight : ''}</span>`;
-        if (staged.weight !== undefined) weightCell.classList.add('cell-modified');
+            case 'location':
+              cell.className = 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'warehouse_location')">${warehouseLocation}</span>`;
+              if (staged.warehouse_location !== undefined) cell.classList.add('cell-modified');
+              break;
 
-        // HS Code (editable)
-        const hsCell = row.insertCell();
-        hsCell.className = 'editable';
-        hsCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'harmonized_system_code')">${hs}</span>`;
-        if (staged.harmonized_system_code !== undefined) hsCell.classList.add('cell-modified');
+            case 'price':
+              cell.className = 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'price')">${price !== '' ? '$' + price : ''}</span>`;
+              if (staged.price !== undefined) cell.classList.add('cell-modified');
+              break;
 
-        // Country (editable)
-        const countryCell = row.insertCell();
-        countryCell.className = 'editable';
-        countryCell.innerHTML =
-          `<span onclick="makeEditable(this, '${variantId}', 'country_code_of_origin')">${country}</span>`;
-        if (staged.country_code_of_origin !== undefined) countryCell.classList.add('cell-modified');
+            case 'inventory':
+              cell.textContent = variant.inventory_quantity || '0';
+              break;
+
+            case 'weight':
+              cell.className = 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'weight')">${weight !== '' ? weight : ''}</span>`;
+              if (staged.weight !== undefined) cell.classList.add('cell-modified');
+              break;
+
+            case 'hsCode':
+              cell.className = 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'harmonized_system_code')">${hs}</span>`;
+              if (staged.harmonized_system_code !== undefined) cell.classList.add('cell-modified');
+              break;
+
+            case 'country':
+              cell.className = 'editable';
+              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'country_code_of_origin')">${country}</span>`;
+              if (staged.country_code_of_origin !== undefined) cell.classList.add('cell-modified');
+              break;
+          }
+        });
 
         // Row metadata for search/filter
         row.dataset.variantId = variantId;
@@ -290,6 +365,7 @@
         row.dataset.pickNumber = (pickNumber || '').toLowerCase();
         row.dataset.warehouseLocation = (warehouseLocation || '').toLowerCase();
         row.dataset.productType = (product.product_type || '').toLowerCase();
+        row.dataset.shipstationName = (shipstationName || '').toLowerCase();
         row.dataset.isDuplicateSku = isDuplicateSku ? '1' : '0';
         row.dataset.isMissingSku = isMissingSku ? '1' : '0';
         row.dataset.isDuplicatePick = isDuplicatePick ? '1' : '0';
@@ -299,6 +375,178 @@
     });
 
     filterTable();
+  }
+
+  function renderTableHeader(thead) {
+    thead.innerHTML = '';
+    columnConfig.forEach(col => {
+      if (!col.visible) return;
+      const th = document.createElement('th');
+      th.textContent = col.label;
+      th.dataset.colId = col.id;
+      th.draggable = !col.fixed;
+      if (!col.fixed) {
+        th.style.cursor = 'grab';
+        th.addEventListener('dragstart', handleDragStart);
+        th.addEventListener('dragover', handleDragOver);
+        th.addEventListener('drop', handleDrop);
+        th.addEventListener('dragend', handleDragEnd);
+      }
+      thead.appendChild(th);
+    });
+  }
+
+  // ===== Column Drag & Drop ==================================================
+  let draggedColumn = null;
+
+  function handleDragStart(e) {
+    draggedColumn = e.target.dataset.colId;
+    e.target.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const th = e.target.closest('th');
+    if (th && th.dataset.colId !== draggedColumn) {
+      th.style.borderLeft = '3px solid #667eea';
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    const th = e.target.closest('th');
+    if (!th || !draggedColumn) return;
+
+    const targetId = th.dataset.colId;
+    if (targetId === draggedColumn) return;
+
+    // Find indexes
+    const fromIdx = columnConfig.findIndex(c => c.id === draggedColumn);
+    const toIdx = columnConfig.findIndex(c => c.id === targetId);
+
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    // Don't allow moving before fixed columns
+    const targetCol = columnConfig[toIdx];
+    if (targetCol.fixed) return;
+
+    // Move column
+    const [moved] = columnConfig.splice(fromIdx, 1);
+    columnConfig.splice(toIdx, 0, moved);
+
+    saveColumnConfig();
+    renderTable();
+    updateColumnSettingsPanel();
+  }
+
+  function handleDragEnd(e) {
+    e.target.style.opacity = '1';
+    document.querySelectorAll('#productTable th').forEach(th => {
+      th.style.borderLeft = '';
+    });
+    draggedColumn = null;
+  }
+
+  // ===== Column Settings Panel ===============================================
+  function openColumnSettings() {
+    const panel = document.getElementById('columnSettingsPanel');
+    updateColumnSettingsPanel();
+    panel.classList.add('active');
+  }
+
+  function closeColumnSettings() {
+    document.getElementById('columnSettingsPanel').classList.remove('active');
+  }
+
+  function updateColumnSettingsPanel() {
+    const list = document.getElementById('columnList');
+    list.innerHTML = '';
+
+    columnConfig.forEach((col, idx) => {
+      const item = document.createElement('div');
+      item.className = 'column-item';
+      item.dataset.colId = col.id;
+      item.draggable = !col.fixed;
+
+      item.innerHTML = `
+        <span class="drag-handle">${col.fixed ? '' : '&#9776;'}</span>
+        <label>
+          <input type="checkbox" ${col.visible ? 'checked' : ''} ${col.fixed ? 'disabled' : ''}
+            onchange="toggleColumn('${col.id}', this.checked)">
+          ${col.label}
+        </label>
+      `;
+
+      if (!col.fixed) {
+        item.addEventListener('dragstart', handleSettingsDragStart);
+        item.addEventListener('dragover', handleSettingsDragOver);
+        item.addEventListener('drop', handleSettingsDrop);
+        item.addEventListener('dragend', handleSettingsDragEnd);
+      }
+
+      list.appendChild(item);
+    });
+  }
+
+  function handleSettingsDragStart(e) {
+    draggedColumn = e.target.closest('.column-item').dataset.colId;
+    e.target.style.opacity = '0.5';
+  }
+
+  function handleSettingsDragOver(e) {
+    e.preventDefault();
+    const item = e.target.closest('.column-item');
+    if (item && item.dataset.colId !== draggedColumn) {
+      item.style.borderTop = '2px solid #667eea';
+    }
+  }
+
+  function handleSettingsDrop(e) {
+    e.preventDefault();
+    const item = e.target.closest('.column-item');
+    if (!item || !draggedColumn) return;
+
+    const targetId = item.dataset.colId;
+    if (targetId === draggedColumn) return;
+
+    const fromIdx = columnConfig.findIndex(c => c.id === draggedColumn);
+    const toIdx = columnConfig.findIndex(c => c.id === targetId);
+
+    if (fromIdx === -1 || toIdx === -1) return;
+    if (columnConfig[toIdx].fixed) return;
+
+    const [moved] = columnConfig.splice(fromIdx, 1);
+    columnConfig.splice(toIdx, 0, moved);
+
+    saveColumnConfig();
+    renderTable();
+    updateColumnSettingsPanel();
+  }
+
+  function handleSettingsDragEnd(e) {
+    e.target.style.opacity = '1';
+    document.querySelectorAll('.column-item').forEach(item => {
+      item.style.borderTop = '';
+    });
+    draggedColumn = null;
+  }
+
+  function toggleColumn(colId, visible) {
+    const col = columnConfig.find(c => c.id === colId);
+    if (col && !col.fixed) {
+      col.visible = visible;
+      saveColumnConfig();
+      renderTable();
+    }
+  }
+
+  function resetColumns() {
+    columnConfig = [...DEFAULT_COLUMNS];
+    saveColumnConfig();
+    renderTable();
+    updateColumnSettingsPanel();
   }
 
   // ===== Table interactions =================================================
@@ -544,7 +792,8 @@
                                row.dataset.variantTitle + ' ' +
                                row.dataset.sku + ' ' +
                                row.dataset.pickNumber + ' ' +
-                               row.dataset.warehouseLocation;
+                               row.dataset.warehouseLocation + ' ' +
+                               (row.dataset.shipstationName || '');
         showRow = searchableText.includes(searchValue);
       }
 
@@ -554,7 +803,8 @@
                                row.dataset.variantTitle + ' ' +
                                row.dataset.sku + ' ' +
                                row.dataset.pickNumber + ' ' +
-                               row.dataset.warehouseLocation;
+                               row.dataset.warehouseLocation + ' ' +
+                               (row.dataset.shipstationName || '');
         const matchesExclude = excludeKeywords.some(keyword => searchableText.includes(keyword));
         if (matchesExclude) showRow = false;
       }

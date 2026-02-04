@@ -134,6 +134,29 @@
     .preview-info { font-size: .9rem; color: #666; margin-bottom: 1rem; }
     .preview-actions { display: flex; gap: 10px; }
     .preview-actions button { flex: 1; }
+
+    /* Column Settings Panel */
+    .column-settings-panel { display: none; position: fixed; top: 0; right: 0; width: 320px; height: 100vh; background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,.15); z-index: 1000; transition: transform .3s; }
+    .column-settings-panel.active { display: block; }
+    .column-settings-content { height: 100%; display: flex; flex-direction: column; }
+    .column-settings-header { background: #2c3e50; color: #fff; padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+    .column-settings-header h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .column-settings-body { flex: 1; padding: 1rem 1.5rem; overflow-y: auto; }
+    .settings-hint { font-size: .85rem; color: #666; margin-bottom: 1rem; padding-bottom: .75rem; border-bottom: 1px solid #eee; }
+    .column-list { display: flex; flex-direction: column; gap: .5rem; }
+    .column-item { display: flex; align-items: center; gap: .75rem; padding: .6rem .75rem; background: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef; cursor: grab; transition: all .2s; }
+    .column-item:hover { background: #e9ecef; }
+    .column-item.dragging { opacity: 0.5; }
+    .drag-handle { color: #999; font-size: 1.1rem; min-width: 18px; }
+    .column-item label { display: flex; align-items: center; gap: .5rem; cursor: pointer; flex: 1; margin: 0; font-size: .9rem; }
+    .column-item input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    .column-item input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.5; }
+    .column-settings-actions { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; display: flex; gap: .75rem; }
+    .column-settings-actions button { flex: 1; }
+
+    /* Draggable table headers */
+    #productTable th[draggable="true"] { cursor: grab; }
+    #productTable th[draggable="true"]:active { cursor: grabbing; }
   </style>
 </head>
 <body>
@@ -158,6 +181,7 @@
           <span id="sourceIndicator" class="source-indicator db">DB</span>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary" onclick="openColumnSettings()">Columns</button>
           <button class="btn btn-secondary" onclick="showErrors()">
             Error Log
             <span id="errorCount" style="display:none;background:#dc3545;color:#fff;padding:2px 6px;border-radius:10px;margin-left:5px;">0</span>
@@ -312,6 +336,24 @@
             <div class="preview-actions">
               <button class="btn btn-secondary" onclick="closeLabelPreview()">Cancel</button>
               <button class="btn btn-primary" id="downloadLabelsBtn" onclick="downloadLabels()">Download Labels</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column Settings Panel -->
+      <div id="columnSettingsPanel" class="column-settings-panel">
+        <div class="column-settings-content">
+          <div class="column-settings-header">
+            <h2>Column Settings</h2>
+            <button class="close-btn" onclick="closeColumnSettings()">&times;</button>
+          </div>
+          <div class="column-settings-body">
+            <p class="settings-hint">Drag to reorder. Check/uncheck to show/hide columns.</p>
+            <div id="columnList" class="column-list"></div>
+            <div class="column-settings-actions">
+              <button class="btn btn-secondary" onclick="resetColumns()">Reset to Default</button>
+              <button class="btn btn-primary" onclick="closeColumnSettings()">Done</button>
             </div>
           </div>
         </div>
