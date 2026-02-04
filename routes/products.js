@@ -620,30 +620,29 @@ router.get('/api/products/debug/metafields/:variantId', requireAuthApi, async (r
 /**
  * GET /api/products/debug/graphql-test
  * Test the GraphQL metafield query directly
+ * Add ?sku=XXXXX to test a specific SKU
  */
 router.get('/api/products/debug/graphql-test', requireAuthApi, async (req, res) => {
   try {
     const { namespace: pickNs, key: pickKey } = shopify.metafieldConfig.pick_number;
     const { namespace: locNs, key: locKey } = shopify.metafieldConfig.warehouse_location;
+    const testSku = req.query.sku || '2026Q4-WEEKLY-HARD-AUT';
 
     console.log('[Debug] Metafield config:', { pickNs, pickKey, locNs, locKey });
+    console.log('[Debug] Testing SKU:', testSku);
 
-    const query = `
+    // Test 1: Query with keys filter (what sync uses)
+    const queryWithFilter = `
       query {
-        productVariants(first: 5) {
+        productVariants(first: 5, query: "sku:${testSku}") {
           edges {
             node {
               id
               legacyResourceId
               sku
-              metafields(first: 20) {
+              metafields(first: 10, keys: ["${pickNs}.${pickKey}", "${locNs}.${locKey}"]) {
                 edges {
-                  node {
-                    id
-                    namespace
-                    key
-                    value
-                  }
+                  node { namespace key value }
                 }
               }
             }
@@ -652,12 +651,55 @@ router.get('/api/products/debug/graphql-test', requireAuthApi, async (req, res) 
       }
     `;
 
-    const response = await shopify.graphqlClient.post('/graphql.json', { query });
-    console.log('[Debug] GraphQL response:', JSON.stringify(response.data, null, 2));
+    // Test 2: Query ALL metafields (no filter)
+    const queryAllMetafields = `
+      query {
+        productVariants(first: 5, query: "sku:${testSku}") {
+          edges {
+            node {
+              id
+              legacyResourceId
+              sku
+              metafields(first: 20) {
+                edges {
+                  node { namespace key value }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    // Test 3: Direct metafield lookup (alternative syntax)
+    const queryDirectLookup = `
+      query {
+        productVariants(first: 5, query: "sku:${testSku}") {
+          edges {
+            node {
+              id
+              legacyResourceId
+              sku
+              pickNumber: metafield(namespace: "${pickNs}", key: "${pickKey}") { value }
+              warehouseLocation: metafield(namespace: "${locNs}", key: "${locKey}") { value }
+            }
+          }
+        }
+      }
+    `;
+
+    const [withFilter, allMetafields, directLookup] = await Promise.all([
+      shopify.graphqlClient.post('/graphql.json', { query: queryWithFilter }),
+      shopify.graphqlClient.post('/graphql.json', { query: queryAllMetafields }),
+      shopify.graphqlClient.post('/graphql.json', { query: queryDirectLookup })
+    ]);
 
     res.json({
       config: { pickNs, pickKey, locNs, locKey },
-      response: response.data
+      testSku,
+      withKeysFilter: withFilter.data,
+      allMetafields: allMetafields.data,
+      directLookup: directLookup.data
     });
   } catch (error) {
     console.error('[Debug] GraphQL error:', error.response?.data || error.message);
