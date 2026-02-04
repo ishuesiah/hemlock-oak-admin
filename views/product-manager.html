@@ -157,6 +157,27 @@
     /* Draggable table headers */
     #productTable th[draggable="true"] { cursor: grab; }
     #productTable th[draggable="true"]:active { cursor: grabbing; }
+
+    /* Sortable headers */
+    #productTable th { cursor: pointer; user-select: none; }
+    #productTable th:hover { background: #e9ecef; }
+    .sort-icon { color: #667eea; font-size: .75rem; margin-left: 4px; }
+
+    /* Pick number suggestion button */
+    .pick-suggest-btn {
+      display: inline-block;
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: .7rem;
+      margin-left: 6px;
+      cursor: pointer;
+      vertical-align: middle;
+      font-weight: 600;
+    }
+    .pick-suggest-btn:hover { background: #219a52; }
   </style>
 </head>
 <body>

@@ -101,6 +101,18 @@
   // Track last clicked checkbox index for shift+click
   let lastCheckedIndex = null;
 
+  // Sorting state
+  let sortColumn = null;
+  let sortDirection = 'asc'; // 'asc' or 'desc'
+
+  // Pick number suggestion tracking
+  let pickSuggestionCounter = null;
+  let usedPickNumbers = new Set();
+
+  // Expose sorting and suggestion functions
+  window.sortByColumn = sortByColumn;
+  window.acceptPickSuggestion = acceptPickSuggestion;
+
   // ===== Boot ===============================================================
   document.addEventListener('DOMContentLoaded', () => {
     // Setup filter checkboxes (mutually exclusive)
@@ -217,6 +229,7 @@
       updateStats();
       populateCategoryFilter();
       updateLabelButtons();
+      initPickSuggestions();
 
       statusBar.className = 'status-bar active success';
       statusMessage.textContent = `Loaded ${products.length} products (${products.reduce((s, p) => s + p.variants.length, 0)} variants) from ${dataSource}`;
@@ -317,7 +330,15 @@
 
             case 'pickNumber':
               cell.className = isDuplicatePick ? 'editable sku-error' : 'editable';
-              cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>`;
+              if (isDuplicatePick || isMissingPick) {
+                const suggestion = getNextAvailablePickNumber(variantId);
+                cell.innerHTML = `
+                  <span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>
+                  <button class="pick-suggest-btn" onclick="acceptPickSuggestion('${variantId}', '${suggestion}')" title="Use suggested pick #${suggestion}">→${suggestion}</button>
+                `;
+              } else {
+                cell.innerHTML = `<span onclick="makeEditable(this, '${variantId}', 'pick_number')">${pickNumber}</span>`;
+              }
               if (staged.pick_number !== undefined) cell.classList.add('cell-modified');
               break;
 
@@ -382,11 +403,25 @@
     columnConfig.forEach(col => {
       if (!col.visible) return;
       const th = document.createElement('th');
-      th.textContent = col.label;
       th.dataset.colId = col.id;
       th.draggable = !col.fixed;
+
+      // Add sort indicator
+      const sortable = !['select'].includes(col.id);
+      if (sortable) {
+        th.style.cursor = 'pointer';
+        th.onclick = (e) => {
+          if (!e.target.closest('.sort-icon')) {
+            sortByColumn(col.id);
+          }
+        };
+        const sortIcon = sortColumn === col.id ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+        th.innerHTML = `${col.label}<span class="sort-icon">${sortIcon}</span>`;
+      } else {
+        th.textContent = col.label;
+      }
+
       if (!col.fixed) {
-        th.style.cursor = 'grab';
         th.addEventListener('dragstart', handleDragStart);
         th.addEventListener('dragover', handleDragOver);
         th.addEventListener('drop', handleDrop);
@@ -394,6 +429,83 @@
       }
       thead.appendChild(th);
     });
+  }
+
+  function sortByColumn(colId) {
+    if (sortColumn === colId) {
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortColumn = colId;
+      sortDirection = 'asc';
+    }
+
+    // Sort the table rows
+    const tbody = document.getElementById('productTableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    rows.sort((a, b) => {
+      let aVal, bVal;
+
+      // Get values based on column
+      switch (colId) {
+        case 'productTitle':
+          aVal = a.dataset.productTitle || '';
+          bVal = b.dataset.productTitle || '';
+          break;
+        case 'variant':
+          aVal = a.dataset.variantTitle || '';
+          bVal = b.dataset.variantTitle || '';
+          break;
+        case 'sku':
+          aVal = a.dataset.sku || '';
+          bVal = b.dataset.sku || '';
+          break;
+        case 'pickNumber':
+          aVal = parseInt(a.dataset.pickNumber) || 999999;
+          bVal = parseInt(b.dataset.pickNumber) || 999999;
+          break;
+        case 'location':
+          aVal = a.dataset.warehouseLocation || '';
+          bVal = b.dataset.warehouseLocation || '';
+          break;
+        case 'shipstationName':
+          aVal = a.dataset.shipstationName || '';
+          bVal = b.dataset.shipstationName || '';
+          break;
+        case 'status':
+          // Sort by number of issues
+          const aIssues = (a.dataset.isDuplicateSku === '1' ? 1 : 0) +
+                          (a.dataset.isMissingSku === '1' ? 1 : 0) +
+                          (a.dataset.isDuplicatePick === '1' ? 1 : 0) +
+                          (a.dataset.isMissingPick === '1' ? 1 : 0) +
+                          (a.dataset.isMissingLocation === '1' ? 1 : 0);
+          const bIssues = (b.dataset.isDuplicateSku === '1' ? 1 : 0) +
+                          (b.dataset.isMissingSku === '1' ? 1 : 0) +
+                          (b.dataset.isDuplicatePick === '1' ? 1 : 0) +
+                          (b.dataset.isMissingPick === '1' ? 1 : 0) +
+                          (b.dataset.isMissingLocation === '1' ? 1 : 0);
+          aVal = aIssues;
+          bVal = bIssues;
+          break;
+        default:
+          aVal = '';
+          bVal = '';
+      }
+
+      // Compare
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDirection === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+
+    // Re-append rows in sorted order
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Update header to show sort indicator
+    renderTableHeader(document.querySelector('#productTable thead tr'));
   }
 
   // ===== Column Drag & Drop ==================================================
@@ -1436,6 +1548,71 @@
   function closeLabelPreview() {
     document.getElementById('labelPreview').classList.remove('active');
     currentLabelType = null;
+  }
+
+  // ===== Pick Number Suggestions =============================================
+  function initPickSuggestions() {
+    // Build set of all used pick numbers (including staged edits)
+    usedPickNumbers.clear();
+    products.forEach(p => {
+      p.variants.forEach(v => {
+        const vid = String(v.id);
+        const staged = modifiedData.get(vid) || {};
+        const pick = staged.pick_number !== undefined ? staged.pick_number : v.pick_number;
+        if (pick && String(pick).trim()) {
+          usedPickNumbers.add(String(pick).trim());
+        }
+      });
+    });
+
+    // Find max pick number to start suggestions from
+    let maxPick = 0;
+    usedPickNumbers.forEach(p => {
+      const num = parseInt(p);
+      if (!isNaN(num) && num > maxPick) maxPick = num;
+    });
+    pickSuggestionCounter = maxPick + 1;
+  }
+
+  function getNextAvailablePickNumber(variantId) {
+    // Initialize if needed
+    if (pickSuggestionCounter === null) {
+      initPickSuggestions();
+    }
+
+    // Find next available number
+    while (usedPickNumbers.has(String(pickSuggestionCounter))) {
+      pickSuggestionCounter++;
+    }
+
+    const suggestion = pickSuggestionCounter;
+    // Reserve this number temporarily
+    usedPickNumbers.add(String(suggestion));
+    pickSuggestionCounter++;
+
+    return suggestion;
+  }
+
+  function acceptPickSuggestion(variantId, suggestion) {
+    // Update the modified data
+    const vid = String(variantId);
+    if (!modifiedData.has(vid)) modifiedData.set(vid, {});
+    modifiedData.get(vid).pick_number = String(suggestion);
+
+    // Update the local variant data
+    for (const p of products) {
+      for (const v of p.variants) {
+        if (String(v.id) === vid) {
+          v.pick_number = String(suggestion);
+          break;
+        }
+      }
+    }
+
+    // Re-render to show the change
+    renderTable();
+    updateStats();
+    showStatus(`Set pick #${suggestion} for variant. Remember to save changes.`, 'success');
   }
 
   // ===== Generate Pick Numbers ===============================================
