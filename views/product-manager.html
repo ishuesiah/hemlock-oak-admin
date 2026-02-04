@@ -159,9 +159,24 @@
     #productTable th[draggable="true"]:active { cursor: grabbing; }
 
     /* Sortable headers */
-    #productTable th { cursor: pointer; user-select: none; }
+    #productTable th { cursor: pointer; user-select: none; position: relative; }
     #productTable th:hover { background: #e9ecef; }
     .sort-icon { color: #667eea; font-size: .75rem; margin-left: 4px; }
+
+    /* Column resizing */
+    .resize-handle {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      cursor: col-resize;
+      background: transparent;
+      z-index: 10;
+    }
+    .resize-handle:hover, .resize-handle.active { background: #667eea; }
+    #productTable th, #productTable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #productTable { table-layout: fixed; }
 
     /* Pick number suggestion button */
     .pick-suggest-btn {

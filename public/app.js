@@ -19,19 +19,19 @@
   // ===== Column Configuration ===============================================
   // Default column definitions
   const DEFAULT_COLUMNS = [
-    { id: 'select', label: 'Select', visible: true, fixed: true },
-    { id: 'status', label: 'Status', visible: true },
-    { id: 'productTitle', label: 'Product Title', visible: true },
-    { id: 'variant', label: 'Variant', visible: true },
-    { id: 'shipstationName', label: 'ShipStation Name', visible: false },
-    { id: 'sku', label: 'SKU', visible: true },
-    { id: 'pickNumber', label: 'Pick #', visible: true },
-    { id: 'location', label: 'Location', visible: true },
-    { id: 'price', label: 'Price', visible: true },
-    { id: 'inventory', label: 'Inventory', visible: true },
-    { id: 'weight', label: 'Weight (g)', visible: true },
-    { id: 'hsCode', label: 'HS Code', visible: true },
-    { id: 'country', label: 'Country', visible: true }
+    { id: 'select', label: 'Select', visible: true, fixed: true, width: 50 },
+    { id: 'status', label: 'Status', visible: true, width: 80 },
+    { id: 'productTitle', label: 'Product Title', visible: true, width: 200 },
+    { id: 'variant', label: 'Variant', visible: true, width: 120 },
+    { id: 'shipstationName', label: 'ShipStation Name', visible: false, width: 250 },
+    { id: 'sku', label: 'SKU', visible: true, width: 150 },
+    { id: 'pickNumber', label: 'Pick #', visible: true, width: 100 },
+    { id: 'location', label: 'Location', visible: true, width: 100 },
+    { id: 'price', label: 'Price', visible: true, width: 80 },
+    { id: 'inventory', label: 'Inventory', visible: true, width: 80 },
+    { id: 'weight', label: 'Weight (g)', visible: true, width: 80 },
+    { id: 'hsCode', label: 'HS Code', visible: true, width: 100 },
+    { id: 'country', label: 'Country', visible: true, width: 70 }
   ];
 
   let columnConfig = loadColumnConfig();
@@ -43,8 +43,8 @@
         const parsed = JSON.parse(saved);
         // Merge with defaults to handle new columns
         const merged = DEFAULT_COLUMNS.map(def => {
-          const saved = parsed.find(c => c.id === def.id);
-          return saved ? { ...def, visible: saved.visible } : def;
+          const savedCol = parsed.find(c => c.id === def.id);
+          return savedCol ? { ...def, visible: savedCol.visible, width: savedCol.width || def.width } : def;
         });
         // Reorder based on saved order
         const ordered = [];
@@ -59,7 +59,7 @@
         return ordered;
       }
     } catch (e) { console.error('Error loading column config:', e); }
-    return [...DEFAULT_COLUMNS];
+    return JSON.parse(JSON.stringify(DEFAULT_COLUMNS));
   }
 
   function saveColumnConfig() {
@@ -406,21 +406,28 @@
       const th = document.createElement('th');
       th.dataset.colId = col.id;
       th.draggable = !col.fixed;
+      th.style.width = (col.width || 100) + 'px';
+      th.style.minWidth = '40px';
 
       // Add sort indicator
       const sortable = !['select'].includes(col.id);
       if (sortable) {
-        th.style.cursor = 'pointer';
         th.onclick = (e) => {
-          if (!e.target.closest('.sort-icon')) {
+          if (!e.target.closest('.sort-icon') && !e.target.closest('.resize-handle')) {
             sortByColumn(col.id);
           }
         };
         const sortIcon = sortColumn === col.id ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
-        th.innerHTML = `${col.label}<span class="sort-icon">${sortIcon}</span>`;
+        th.innerHTML = `<span class="th-content">${col.label}<span class="sort-icon">${sortIcon}</span></span>`;
       } else {
-        th.textContent = col.label;
+        th.innerHTML = `<span class="th-content">${col.label}</span>`;
       }
+
+      // Add resize handle
+      const resizeHandle = document.createElement('div');
+      resizeHandle.className = 'resize-handle';
+      resizeHandle.addEventListener('mousedown', (e) => startResize(e, col.id, th));
+      th.appendChild(resizeHandle);
 
       if (!col.fixed) {
         th.addEventListener('dragstart', handleDragStart);
@@ -430,6 +437,63 @@
       }
       thead.appendChild(th);
     });
+  }
+
+  // ===== Column Resizing =====================================================
+  let resizingColumn = null;
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+
+  function startResize(e, colId, th) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColumn = colId;
+    resizeStartX = e.pageX;
+    resizeStartWidth = th.offsetWidth;
+
+    const handle = e.target;
+    handle.classList.add('active');
+
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+  }
+
+  function doResize(e) {
+    if (!resizingColumn) return;
+
+    const diff = e.pageX - resizeStartX;
+    const newWidth = Math.max(40, resizeStartWidth + diff);
+
+    // Update column config
+    const col = columnConfig.find(c => c.id === resizingColumn);
+    if (col) {
+      col.width = newWidth;
+
+      // Update the th width directly for smooth resizing
+      const th = document.querySelector(`th[data-col-id="${resizingColumn}"]`);
+      if (th) th.style.width = newWidth + 'px';
+
+      // Update all cells in this column
+      const colIndex = Array.from(document.querySelectorAll('#productTable thead th')).findIndex(
+        h => h.dataset.colId === resizingColumn
+      );
+      if (colIndex >= 0) {
+        document.querySelectorAll(`#productTableBody tr`).forEach(row => {
+          const cell = row.cells[colIndex];
+          if (cell) cell.style.width = newWidth + 'px';
+        });
+      }
+    }
+  }
+
+  function stopResize() {
+    if (resizingColumn) {
+      document.querySelectorAll('.resize-handle.active').forEach(h => h.classList.remove('active'));
+      saveColumnConfig();
+    }
+    resizingColumn = null;
+    document.removeEventListener('mousemove', doResize);
+    document.removeEventListener('mouseup', stopResize);
   }
 
   function sortByColumn(colId) {
