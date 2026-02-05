@@ -413,10 +413,9 @@ class ShipStationAPI {
         const updated = await this.updateProduct(existing.productId, updatePayload);
         return { action: 'updated', product: updated };
       } else {
-        // Create new product
-        console.log(`[ShipStation] Creating product SKU: ${sku}`);
-        const created = await this.createProduct(productData);
-        return { action: 'created', product: created };
+        // Skip creation - ShipStation products should come from orders
+        console.log(`[ShipStation] Skipping SKU ${sku} - not in ShipStation catalog (products are created from orders)`);
+        return { action: 'skipped', sku, reason: 'not_in_catalog' };
       }
     } catch (error) {
       console.error(`[ShipStation] Upsert failed for SKU ${sku}:`, error.message);
@@ -438,14 +437,14 @@ class ShipStationAPI {
 
     const results = {
       total: products.length,
-      created: 0,
       updated: 0,
+      skipped: 0,
       failed: 0,
       errors: [],
       details: []
     };
 
-    console.log(`[ShipStation] Batch upserting ${products.length} products...`);
+    console.log(`[ShipStation] Batch updating ${products.length} products (update-only mode)...`);
 
     for (let i = 0; i < products.length; i++) {
       const product = products[i];
@@ -453,10 +452,10 @@ class ShipStationAPI {
       try {
         const result = await this.upsertProductBySku(product);
 
-        if (result.action === 'created') {
-          results.created++;
-        } else {
+        if (result.action === 'updated') {
           results.updated++;
+        } else if (result.action === 'skipped') {
+          results.skipped++;
         }
 
         results.details.push({
@@ -470,8 +469,8 @@ class ShipStationAPI {
           console.log(`[ShipStation] Progress: ${i + 1}/${products.length}`);
         }
 
-        // Rate limiting
-        if (i < products.length - 1) {
+        // Rate limiting - only delay after API calls (not skipped items)
+        if (i < products.length - 1 && result.action === 'updated') {
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
 
@@ -484,7 +483,7 @@ class ShipStationAPI {
       }
     }
 
-    console.log(`[ShipStation] Batch complete: ${results.created} created, ${results.updated} updated, ${results.failed} failed`);
+    console.log(`[ShipStation] Batch complete: ${results.updated} updated, ${results.skipped} skipped (not in catalog), ${results.failed} failed`);
 
     return results;
   }

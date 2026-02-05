@@ -633,8 +633,8 @@ router.post('/api/products/sync-shipstation', requireAuthApi, async (req, res) =
       success: true,
       mode,
       total: variants.length,
-      created: syncResults.created,
       updated: syncResults.updated,
+      skipped: syncResults.skipped,
       failed: syncResults.failed,
       errors: syncResults.errors
     });

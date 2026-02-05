@@ -1196,7 +1196,8 @@
 
       if (!response.ok) throw new Error(result.error);
 
-      let msg = `ShipStation sync: ${result.created} created, ${result.updated} updated`;
+      let msg = `ShipStation sync: ${result.updated} updated`;
+      if (result.skipped > 0) msg += `, ${result.skipped} skipped (not in catalog)`;
       if (result.failed > 0) msg += `, ${result.failed} failed`;
 
       showStatus(msg, result.failed > 0 ? 'warning' : 'success');
