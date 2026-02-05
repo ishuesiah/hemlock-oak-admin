@@ -1183,14 +1183,24 @@
     const loading = document.getElementById('loading');
     const loadingText = document.getElementById('loadingText');
 
+    // If variants are selected, only sync those; otherwise sync all
+    const selected = Array.from(selectedIds);
+    const syncingSelected = selected.length > 0;
+
     loading.classList.add('active');
-    loadingText.textContent = 'Syncing to ShipStation (locations + pick numbers)...';
+    loadingText.textContent = syncingSelected
+      ? `Syncing ${selected.length} selected items to ShipStation...`
+      : 'Syncing all to ShipStation (locations + pick numbers)...';
 
     try {
+      const body = syncingSelected
+        ? { variantIds: selected }
+        : { mode: 'full' };
+
       const response = await fetch('/api/products/sync-shipstation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'full' })
+        body: JSON.stringify(body)
       });
       const result = await response.json();
 
