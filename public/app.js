@@ -331,12 +331,15 @@
               break;
 
             case 'shipstationName':
-              cell.textContent = shipstationName;
+              // Always construct display name from product + variant
+              const variantPart = variant.title && variant.title !== 'Default' ? variant.title : '';
+              const displayName = variantPart ? `${product.title} - ${variantPart}` : product.title;
+              cell.textContent = displayName;
               cell.style.maxWidth = '250px';
               cell.style.overflow = 'hidden';
               cell.style.textOverflow = 'ellipsis';
               cell.style.whiteSpace = 'nowrap';
-              cell.title = shipstationName;
+              cell.title = displayName;
               break;
 
             case 'sku':
@@ -416,7 +419,10 @@
         row.dataset.pickNumber = (pickNumber || '').toLowerCase();
         row.dataset.warehouseLocation = (warehouseLocation || '').toLowerCase();
         row.dataset.productType = (product.product_type || '').toLowerCase();
-        row.dataset.shipstationName = (shipstationName || '').toLowerCase();
+        // Construct display name for ShipStation Name column (product + variant)
+        const ssVariantPart = variant.title && variant.title !== 'Default' ? variant.title : '';
+        const ssDisplayName = ssVariantPart ? `${product.title} - ${ssVariantPart}` : product.title;
+        row.dataset.shipstationName = ssDisplayName.toLowerCase();
         row.dataset.isDuplicateSku = isDuplicateSku ? '1' : '0';
         row.dataset.isMissingSku = isMissingSku ? '1' : '0';
         row.dataset.isDuplicatePick = isDuplicatePick ? '1' : '0';
