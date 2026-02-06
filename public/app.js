@@ -91,8 +91,6 @@
   window.selectAllVisible = selectAllVisible;
   window.clearSelection = clearSelection;
   window.generateDetailedLabels = generateDetailedLabels;
-  window.generateLargeQRLabels = generateLargeQRLabels;
-  window.generateQRLabels = generateQRLabels;
   window.generateQRInventoryLabels = generateQRInventoryLabels;
   window.closeLabelPreview = closeLabelPreview;
   window.downloadLabels = downloadLabels;
@@ -2001,14 +1999,6 @@
     showLabelPreview('detailed');
   }
 
-  function generateLargeQRLabels() {
-    showLabelPreview('largeqr');
-  }
-
-  function generateQRLabels() {
-    showLabelPreview('qr');
-  }
-
   function generateQRInventoryLabels() {
     showLabelPreview('qrinv');
   }
@@ -2024,12 +2014,6 @@
     switch (currentLabelType) {
       case 'detailed':
         html = generateDetailedLabelsHTML(selected);
-        break;
-      case 'largeqr':
-        html = generateLargeQRLabelsHTML(selected);
-        break;
-      case 'qr':
-        html = generateQRLabelsHTML(selected);
         break;
       case 'qrinv':
         html = generateQRInventoryLabelsHTML(selected);
@@ -2116,8 +2100,11 @@
         }
         .arrows {
             height: 28px;
-            width: 28px;
+            width: auto;
+            min-width: 28px;
             margin-right: 8px;
+            object-fit: contain;
+            flex-shrink: 0;
         }
         .sku-text {
             font-size: 9pt;
@@ -2174,242 +2161,6 @@
       // Fill empty slots if needed
       const remaining = 8 - (items.length - i);
       if (remaining > 0 && remaining < 8) {
-        for (let k = 0; k < remaining; k++) {
-          labelsHTML += '<div class="label"></div>';
-        }
-      }
-
-      labelsHTML += '</div>';
-    }
-
-    labelsHTML += '</body></html>';
-    return labelsHTML;
-  }
-
-  function generateLargeQRLabelsHTML(items) {
-    // 3 labels per 4x6 page - matches shelf_label_generator.html generateSimplePDF
-    let labelsHTML = `<!DOCTYPE html>
-<html>
-<head>
-    <title>Shelf Labels with QR Codes</title>
-    <style>
-        @page {
-            size: 4in 6in;
-            margin: 0;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-        }
-        .page {
-            width: 4in;
-            height: 6in;
-            page-break-after: always;
-            display: flex;
-            flex-direction: column;
-        }
-        .page:last-child {
-            page-break-after: auto;
-        }
-        .label {
-            height: 2in;
-            border-bottom: 1px dashed #ccc;
-            display: flex;
-            flex-direction: row;
-            justify-content: flex-start;
-            align-items: center;
-            text-align: left;
-            padding: 10px 15px;
-            box-sizing: border-box;
-            gap: 15px;
-        }
-        .label:first-child {
-            border-top: 1px dashed #ccc;
-        }
-        .label:last-child {
-            border-bottom: none;
-        }
-        .qr-code {
-            width: 0.75in;
-            height: 0.75in;
-            flex-shrink: 0;
-        }
-        .label-content {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            flex: 1;
-            min-width: 0;
-        }
-        .pick-num {
-            font-size: 54pt;
-            font-weight: bold;
-            line-height: 1;
-            font-family: Arial, sans-serif;
-        }
-        .sku-text {
-            font-size: 11pt;
-            font-weight: 600;
-            color: #333;
-            margin-top: 4px;
-        }
-        .name-text {
-            font-size: 9pt;
-            color: #666;
-            margin-top: 2px;
-            line-height: 1.2;
-        }
-        @media print {
-            .no-print { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
-        <strong>Instructions:</strong> Print this page with these settings:<br>
-        • Paper size: 4" x 6"<br>
-        • Margins: None<br>
-        • Scale: 100%<br>
-        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
-            Print Labels
-        </button>
-    </div>
-`;
-
-    // Group into pages of 3
-    for (let i = 0; i < items.length; i += 3) {
-      labelsHTML += '<div class="page">';
-
-      for (let j = i; j < Math.min(i + 3, items.length); j++) {
-        const item = items[j];
-        const shopifyUrl = item.productId && item.variantId
-          ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
-          : '';
-        const qrCodeUrl = shopifyUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(shopifyUrl)}`
-          : '';
-        labelsHTML += `
-                        <div class="label">
-                            ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR">` : '<div class="qr-code" style="background:#eee;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;">No QR</div>'}
-                            <div class="label-content">
-                                <div class="pick-num">${item.pick}</div>
-                                <div class="sku-text">${item.sku}</div>
-                                <div class="name-text">${item.name}</div>
-                            </div>
-                        </div>
-                    `;
-      }
-
-      // Fill empty slots if needed
-      const remaining = 3 - (items.length - i);
-      if (remaining > 0 && remaining < 3) {
-        for (let k = 0; k < remaining; k++) {
-          labelsHTML += '<div class="label"></div>';
-        }
-      }
-
-      labelsHTML += '</div>';
-    }
-
-    labelsHTML += '</body></html>';
-    return labelsHTML;
-  }
-
-  function generateQRLabelsHTML(items) {
-    // 6 labels per 4x6 page (QR + Pick only) - matches shelf_label_generator.html generateQRLabels
-    let labelsHTML = `<!DOCTYPE html>
-<html>
-<head>
-    <title>QR Code Labels</title>
-    <style>
-        @page {
-            size: 4in 6in;
-            margin: 0;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
-        }
-        .page {
-            width: 4in;
-            height: 6in;
-            page-break-after: always;
-            display: flex;
-            flex-direction: column;
-        }
-        .page:last-child {
-            page-break-after: auto;
-        }
-        .label {
-            height: 1in;
-            border-bottom: 1px dashed #ccc;
-            display: flex;
-            flex-direction: row;
-            justify-content: flex-start;
-            align-items: center;
-            padding: 0 10px;
-            box-sizing: border-box;
-            gap: 10px;
-        }
-        .label:first-child {
-            border-top: 1px dashed #ccc;
-        }
-        .label:last-child {
-            border-bottom: none;
-        }
-        .qr-code {
-            width: 0.85in;
-            height: 0.85in;
-            flex-shrink: 0;
-        }
-        .pick-num {
-            font-size: 48pt;
-            font-weight: bold;
-            line-height: 1;
-            font-family: Arial, sans-serif;
-        }
-        @media print {
-            .no-print { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
-        <strong>Instructions:</strong> Print this page with these settings:<br>
-        • Paper size: 4" x 6"<br>
-        • Margins: None<br>
-        • Scale: 100%<br>
-        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
-            Print Labels
-        </button>
-    </div>
-`;
-
-    // Group into pages of 6
-    for (let i = 0; i < items.length; i += 6) {
-      labelsHTML += '<div class="page">';
-
-      for (let j = i; j < Math.min(i + 6, items.length); j++) {
-        const item = items[j];
-        const shopifyUrl = item.productId && item.variantId
-          ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
-          : '';
-        const qrCodeUrl = shopifyUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(shopifyUrl)}`
-          : '';
-        labelsHTML += `
-                        <div class="label">
-                            ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR">` : '<div class="qr-code" style="background:#eee;"></div>'}
-                            <div class="pick-num">${item.pick}</div>
-                        </div>
-                    `;
-      }
-
-      // Fill empty slots if needed
-      const remaining = 6 - (items.length - i);
-      if (remaining > 0 && remaining < 6) {
         for (let k = 0; k < remaining; k++) {
           labelsHTML += '<div class="label"></div>';
         }
