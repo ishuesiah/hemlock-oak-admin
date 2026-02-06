@@ -1002,15 +1002,18 @@
         showRow = row.dataset.productType === categoryValue;
       }
 
-      // Search filter
+      // Search filter - matches ALL words in any order
       if (showRow && searchValue) {
-        const searchableText = row.dataset.productTitle + ' ' +
+        const searchableText = (row.dataset.productTitle + ' ' +
                                row.dataset.variantTitle + ' ' +
                                row.dataset.sku + ' ' +
                                row.dataset.pickNumber + ' ' +
                                row.dataset.warehouseLocation + ' ' +
-                               (row.dataset.shipstationName || '');
-        showRow = searchableText.includes(searchValue);
+                               (row.dataset.shipstationName || '')).toLowerCase();
+
+        // Split search into words and check if ALL words are found
+        const searchWords = searchValue.split(/\s+/).filter(w => w.length > 0);
+        showRow = searchWords.every(word => searchableText.includes(word));
       }
 
       // Exclusion filter
