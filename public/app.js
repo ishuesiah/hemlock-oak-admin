@@ -2053,210 +2053,478 @@
   }
 
   // ===== Label HTML Generators ===============================================
+  // Matching exact format from shelf_label_generator.html
+
+  // Base64 arrows image for detailed labels
+  const ARROWS_IMG = 'data:image/gif;base64,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';
 
   function generateDetailedLabelsHTML(items) {
-    // 8 labels per 4x6 page
-    const labelsPerPage = 8;
-    const pages = [];
+    // 8 labels per 4x6 page (0.75in each)
+    let labelsHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Shelf Labels</title>
+    <style>
+        @page {
+            size: 4in 6in;
+            margin: 0;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        .page {
+            width: 4in;
+            height: 6in;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+        }
+        .page:last-child {
+            page-break-after: auto;
+        }
+        .label {
+            height: 0.75in;
+            border-bottom: 1px dashed #ccc;
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            text-align: left;
+            padding: 2px 10px;
+            box-sizing: border-box;
+            gap: 10px;
+        }
+        .label:first-child {
+            border-top: 1px dashed #ccc;
+        }
+        .label:last-child {
+            border-bottom: none;
+        }
+        .pick-num {
+            font-size: 24pt;
+            font-weight: bold;
+            line-height: 1;
+            font-family: Arial, sans-serif;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+        }
+        .arrows {
+            height: 28px;
+            width: 28px;
+            margin-right: 8px;
+        }
+        .sku-text {
+            font-size: 9pt;
+        }
+        .name-text {
+            font-size: 8pt;
+            color: #333;
+            max-width: 2.5in;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            line-height: 1.2;
+        }
+        .label-details {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
+        <strong>Instructions:</strong> Print this page with these settings:<br>
+        • Paper size: 4" x 6"<br>
+        • Margins: None<br>
+        • Scale: 100%<br>
+        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
+            Print Labels
+        </button>
+    </div>
+`;
 
-    for (let i = 0; i < items.length; i += labelsPerPage) {
-      const pageItems = items.slice(i, i + labelsPerPage);
-      const labels = pageItems.map(item => `
-        <div class="label">
-          <div class="pick">${item.pick}</div>
-          <div class="sku">${item.sku}</div>
-          <div class="name">${item.name}</div>
-        </div>
-      `).join('');
-      pages.push(`<div class="page">${labels}</div>`);
+    // Group into pages of 8
+    for (let i = 0; i < items.length; i += 8) {
+      labelsHTML += '<div class="page">';
+
+      for (let j = i; j < Math.min(i + 8, items.length); j++) {
+        const p = items[j];
+        labelsHTML += `
+            <div class="label">
+                <div class="pick-num"><img class="arrows" src="${ARROWS_IMG}" alt=""> ${p.pick}</div>
+                <div class="label-details">
+                    <div class="sku-text">${p.sku}</div>
+                    <div class="name-text">${p.name}</div>
+                </div>
+            </div>
+        `;
+      }
+
+      // Fill empty slots if needed
+      const remaining = 8 - (items.length - i);
+      if (remaining > 0 && remaining < 8) {
+        for (let k = 0; k < remaining; k++) {
+          labelsHTML += '<div class="label"></div>';
+        }
+      }
+
+      labelsHTML += '</div>';
     }
 
-    return `<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8">
-<title>Shelf Labels - Detailed</title>
-<style>
-  @page { size: 4in 6in; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; }
-  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
-  .label { width: 2in; height: 0.75in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 4px 6px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-  .label:nth-child(2n) { border-right: none; }
-  .pick { font-size: 24pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
-  .sku { font-size: 9pt; color: #333; margin-top: 2px; }
-  .name { font-size: 8pt; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 1.8in; }
-  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
-  @media print { .no-print { display: none; } }
-</style>
-</head><body>
-<div class="no-print">
-  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
-  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
-</div>
-${pages.join('')}
-</body></html>`;
+    labelsHTML += '</body></html>';
+    return labelsHTML;
   }
 
   function generateLargeQRLabelsHTML(items) {
-    // 3 labels per 4x6 page
-    const labelsPerPage = 3;
-    const pages = [];
+    // 3 labels per 4x6 page - matches shelf_label_generator.html generateSimplePDF
+    let labelsHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <title>Shelf Labels with QR Codes</title>
+    <style>
+        @page {
+            size: 4in 6in;
+            margin: 0;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        .page {
+            width: 4in;
+            height: 6in;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+        }
+        .page:last-child {
+            page-break-after: auto;
+        }
+        .label {
+            height: 2in;
+            border-bottom: 1px dashed #ccc;
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            text-align: left;
+            padding: 10px 15px;
+            box-sizing: border-box;
+            gap: 15px;
+        }
+        .label:first-child {
+            border-top: 1px dashed #ccc;
+        }
+        .label:last-child {
+            border-bottom: none;
+        }
+        .qr-code {
+            width: 0.75in;
+            height: 0.75in;
+            flex-shrink: 0;
+        }
+        .label-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex: 1;
+            min-width: 0;
+        }
+        .pick-num {
+            font-size: 54pt;
+            font-weight: bold;
+            line-height: 1;
+            font-family: Arial, sans-serif;
+        }
+        .sku-text {
+            font-size: 11pt;
+            font-weight: 600;
+            color: #333;
+            margin-top: 4px;
+        }
+        .name-text {
+            font-size: 9pt;
+            color: #666;
+            margin-top: 2px;
+            line-height: 1.2;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
+        <strong>Instructions:</strong> Print this page with these settings:<br>
+        • Paper size: 4" x 6"<br>
+        • Margins: None<br>
+        • Scale: 100%<br>
+        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
+            Print Labels
+        </button>
+    </div>
+`;
 
-    for (let i = 0; i < items.length; i += labelsPerPage) {
-      const pageItems = items.slice(i, i + labelsPerPage);
-      const labels = pageItems.map(item => {
-        const qrUrl = item.productId && item.variantId
+    // Group into pages of 3
+    for (let i = 0; i < items.length; i += 3) {
+      labelsHTML += '<div class="page">';
+
+      for (let j = i; j < Math.min(i + 3, items.length); j++) {
+        const item = items[j];
+        const shopifyUrl = item.productId && item.variantId
           ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
           : '';
-        const qrSrc = qrUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrUrl)}`
+        const qrCodeUrl = shopifyUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(shopifyUrl)}`
           : '';
-        return `
-          <div class="label">
-            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
-            <div class="info">
-              <div class="pick">${item.pick}</div>
-              <div class="sku">${item.sku}</div>
-              <div class="name">${item.name}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      pages.push(`<div class="page">${labels}</div>`);
+        labelsHTML += `
+                        <div class="label">
+                            ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR">` : '<div class="qr-code" style="background:#eee;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;">No QR</div>'}
+                            <div class="label-content">
+                                <div class="pick-num">${item.pick}</div>
+                                <div class="sku-text">${item.sku}</div>
+                                <div class="name-text">${item.name}</div>
+                            </div>
+                        </div>
+                    `;
+      }
+
+      // Fill empty slots if needed
+      const remaining = 3 - (items.length - i);
+      if (remaining > 0 && remaining < 3) {
+        for (let k = 0; k < remaining; k++) {
+          labelsHTML += '<div class="label"></div>';
+        }
+      }
+
+      labelsHTML += '</div>';
     }
 
-    return `<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8">
-<title>Shelf Labels - Large QR</title>
-<style>
-  @page { size: 4in 6in; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; }
-  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-direction: column; }
-  .label { height: 2in; border-bottom: 1px dashed #ccc; padding: 10px; display: flex; align-items: center; gap: 15px; }
-  .qr { width: 0.9in; height: 0.9in; }
-  .qr-placeholder { width: 0.9in; height: 0.9in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 10pt; color: #999; }
-  .info { flex: 1; }
-  .pick { font-size: 54pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
-  .sku { font-size: 11pt; font-weight: 600; color: #333; margin-top: 4px; }
-  .name { font-size: 9pt; color: #666; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 2.5in; }
-  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
-  @media print { .no-print { display: none; } }
-</style>
-</head><body>
-<div class="no-print">
-  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
-  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
-</div>
-${pages.join('')}
-</body></html>`;
+    labelsHTML += '</body></html>';
+    return labelsHTML;
   }
 
   function generateQRLabelsHTML(items) {
-    // 6 labels per 4x6 page (QR + Pick only)
-    const labelsPerPage = 6;
-    const pages = [];
+    // 6 labels per 4x6 page (QR + Pick only) - matches shelf_label_generator.html generateQRLabels
+    let labelsHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <title>QR Code Labels</title>
+    <style>
+        @page {
+            size: 4in 6in;
+            margin: 0;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        .page {
+            width: 4in;
+            height: 6in;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+        }
+        .page:last-child {
+            page-break-after: auto;
+        }
+        .label {
+            height: 1in;
+            border-bottom: 1px dashed #ccc;
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 0 10px;
+            box-sizing: border-box;
+            gap: 10px;
+        }
+        .label:first-child {
+            border-top: 1px dashed #ccc;
+        }
+        .label:last-child {
+            border-bottom: none;
+        }
+        .qr-code {
+            width: 0.85in;
+            height: 0.85in;
+            flex-shrink: 0;
+        }
+        .pick-num {
+            font-size: 48pt;
+            font-weight: bold;
+            line-height: 1;
+            font-family: Arial, sans-serif;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
+        <strong>Instructions:</strong> Print this page with these settings:<br>
+        • Paper size: 4" x 6"<br>
+        • Margins: None<br>
+        • Scale: 100%<br>
+        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
+            Print Labels
+        </button>
+    </div>
+`;
 
-    for (let i = 0; i < items.length; i += labelsPerPage) {
-      const pageItems = items.slice(i, i + labelsPerPage);
-      const labels = pageItems.map(item => {
-        const qrUrl = item.productId && item.variantId
+    // Group into pages of 6
+    for (let i = 0; i < items.length; i += 6) {
+      labelsHTML += '<div class="page">';
+
+      for (let j = i; j < Math.min(i + 6, items.length); j++) {
+        const item = items[j];
+        const shopifyUrl = item.productId && item.variantId
           ? `https://admin.shopify.com/store/hemlock-oak/products/${item.productId}/variants/${item.variantId}`
           : '';
-        const qrSrc = qrUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`
+        const qrCodeUrl = shopifyUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(shopifyUrl)}`
           : '';
-        return `
-          <div class="label">
-            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
-            <div class="pick">${item.pick}</div>
-          </div>
-        `;
-      }).join('');
-      pages.push(`<div class="page">${labels}</div>`);
+        labelsHTML += `
+                        <div class="label">
+                            ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR">` : '<div class="qr-code" style="background:#eee;"></div>'}
+                            <div class="pick-num">${item.pick}</div>
+                        </div>
+                    `;
+      }
+
+      // Fill empty slots if needed
+      const remaining = 6 - (items.length - i);
+      if (remaining > 0 && remaining < 6) {
+        for (let k = 0; k < remaining; k++) {
+          labelsHTML += '<div class="label"></div>';
+        }
+      }
+
+      labelsHTML += '</div>';
     }
 
-    return `<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8">
-<title>Shelf Labels - QR</title>
-<style>
-  @page { size: 4in 6in; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; }
-  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
-  .label { width: 2in; height: 1in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 5px; display: flex; align-items: center; gap: 8px; }
-  .label:nth-child(2n) { border-right: none; }
-  .qr { width: 0.85in; height: 0.85in; }
-  .qr-placeholder { width: 0.85in; height: 0.85in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999; }
-  .pick { font-size: 36pt; font-weight: 700; font-family: 'Courier New', monospace; }
-  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
-  @media print { .no-print { display: none; } }
-</style>
-</head><body>
-<div class="no-print">
-  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
-  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
-</div>
-${pages.join('')}
-</body></html>`;
+    labelsHTML += '</body></html>';
+    return labelsHTML;
   }
 
   function generateQRInventoryLabelsHTML(items) {
-    // 6 labels per 4x6 page - QR links to SKU search
-    const labelsPerPage = 6;
-    const pages = [];
+    // 6 labels per 4x6 page - QR links to inventory search by SKU
+    // Matches shelf_label_generator.html generateQRLabelsInventory
+    let labelsHTML = `<!DOCTYPE html>
+<html>
+<head>
+    <title>QR Code Labels (Inventory)</title>
+    <style>
+        @page {
+            size: 4in 6in;
+            margin: 0;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        .page {
+            width: 4in;
+            height: 6in;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+        }
+        .page:last-child {
+            page-break-after: auto;
+        }
+        .label {
+            height: 1in;
+            border-bottom: 1px dashed #ccc;
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 0 10px;
+            box-sizing: border-box;
+            gap: 10px;
+        }
+        .label:first-child {
+            border-top: 1px dashed #ccc;
+        }
+        .label:last-child {
+            border-bottom: none;
+        }
+        .qr-code {
+            width: 0.85in;
+            height: 0.85in;
+            flex-shrink: 0;
+        }
+        .pick-num {
+            font-size: 48pt;
+            font-weight: bold;
+            line-height: 1;
+            font-family: Arial, sans-serif;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="padding: 20px; background: #f0f0f0; margin-bottom: 20px;">
+        <strong>Instructions:</strong> Print this page with these settings:<br>
+        • Paper size: 4" x 6"<br>
+        • Margins: None<br>
+        • Scale: 100%<br>
+        <button onclick="window.print()" style="margin-top: 10px; padding: 10px 20px; font-size: 16px;">
+            Print Labels
+        </button>
+    </div>
+`;
 
-    for (let i = 0; i < items.length; i += labelsPerPage) {
-      const pageItems = items.slice(i, i + labelsPerPage);
-      const labels = pageItems.map(item => {
-        // QR links to inventory search by SKU
-        const qrUrl = item.sku
-          ? `https://admin.shopify.com/store/hemlock-oak/products?query=${encodeURIComponent(item.sku)}`
+    // Group into pages of 6
+    for (let i = 0; i < items.length; i += 6) {
+      labelsHTML += '<div class="page">';
+
+      for (let j = i; j < Math.min(i + 6, items.length); j++) {
+        const item = items[j];
+        // Use inventory search by SKU
+        const shopifyUrl = item.sku
+          ? `https://admin.shopify.com/store/hemlock-oak/products/inventory?query=${encodeURIComponent(item.sku)}`
           : '';
-        const qrSrc = qrUrl
-          ? `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`
+        const qrCodeUrl = shopifyUrl
+          ? `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(shopifyUrl)}`
           : '';
-        return `
-          <div class="label">
-            ${qrSrc ? `<img class="qr" src="${qrSrc}" alt="QR">` : '<div class="qr-placeholder">No QR</div>'}
-            <div class="info">
-              <div class="pick">${item.pick}</div>
-              <div class="sku">${item.sku}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-      pages.push(`<div class="page">${labels}</div>`);
+        labelsHTML += `
+                        <div class="label">
+                            ${qrCodeUrl ? `<img class="qr-code" src="${qrCodeUrl}" alt="QR">` : '<div class="qr-code" style="background:#eee;"></div>'}
+                            <div class="pick-num">${item.pick}</div>
+                        </div>
+                    `;
+      }
+
+      // Fill empty slots if needed
+      const remaining = 6 - (items.length - i);
+      if (remaining > 0 && remaining < 6) {
+        for (let k = 0; k < remaining; k++) {
+          labelsHTML += '<div class="label"></div>';
+        }
+      }
+
+      labelsHTML += '</div>';
     }
 
-    return `<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8">
-<title>Shelf Labels - QR Inventory</title>
-<style>
-  @page { size: 4in 6in; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; }
-  .page { width: 4in; height: 6in; page-break-after: always; display: flex; flex-wrap: wrap; }
-  .label { width: 2in; height: 1in; border-bottom: 1px dashed #ccc; border-right: 1px dashed #ccc; padding: 5px; display: flex; align-items: center; gap: 8px; }
-  .label:nth-child(2n) { border-right: none; }
-  .qr { width: 0.85in; height: 0.85in; }
-  .qr-placeholder { width: 0.85in; height: 0.85in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #999; }
-  .info { display: flex; flex-direction: column; justify-content: center; }
-  .pick { font-size: 32pt; font-weight: 700; font-family: 'Courier New', monospace; line-height: 1; }
-  .sku { font-size: 8pt; color: #333; margin-top: 2px; }
-  .no-print { padding: 20px; background: #f0f0f0; margin-bottom: 20px; }
-  @media print { .no-print { display: none; } }
-</style>
-</head><body>
-<div class="no-print">
-  <strong>Instructions:</strong> Print with: Paper size 4×6, Margins: None, Scale: 100%<br>
-  <button onclick="window.print()" style="margin-top:10px;padding:10px 20px;font-size:16px;">Print Labels</button>
-</div>
-${pages.join('')}
-</body></html>`;
+    labelsHTML += '</body></html>';
+    return labelsHTML;
   }
 
   // ===== Tag Management =======================================================
