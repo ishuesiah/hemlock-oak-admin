@@ -110,6 +110,9 @@
     /* Category filter dropdown */
     .category-filter { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 150px; }
 
+    /* Aisle filter dropdown */
+    .aisle-filter { padding: .5rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 100px; }
+
     /* Exclusion input */
     .exclude-input { padding: .5rem 1rem; border: 1px solid #e0e0e0; border-radius: 6px; font-size: .9rem; min-width: 200px; }
 
@@ -333,6 +336,15 @@
         </div>
         <select id="categoryFilter" class="category-filter" onchange="filterTable()">
           <option value="">All Categories</option>
+        </select>
+        <select id="aisleFilter" class="aisle-filter" onchange="filterTable()">
+          <option value="">All Aisles</option>
+          <option value="A1">Aisle 1</option>
+          <option value="A2">Aisle 2</option>
+          <option value="A3">Aisle 3</option>
+          <option value="A4">Aisle 4</option>
+          <option value="A5">Aisle 5</option>
+          <option value="A6">Aisle 6</option>
         </select>
         <select id="tagFilter" class="tag-filter" onchange="filterByTag(this.value)">
           <option value="">All Tags</option>

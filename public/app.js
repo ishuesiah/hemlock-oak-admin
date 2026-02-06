@@ -972,6 +972,7 @@
   function filterTable() {
     const searchValue = document.getElementById('searchInput').value.toLowerCase();
     const categoryValue = document.getElementById('categoryFilter')?.value.toLowerCase() || '';
+    const aisleValue = document.getElementById('aisleFilter')?.value.toUpperCase() || '';
     const excludeValue = document.getElementById('excludeInput')?.value.toLowerCase() || '';
     const excludeKeywords = excludeValue.split(',').map(k => k.trim()).filter(k => k.length > 0);
 
@@ -998,6 +999,12 @@
       // Category filter
       if (showRow && categoryValue) {
         showRow = row.dataset.productType === categoryValue;
+      }
+
+      // Aisle filter (A1, A2, etc. from location like "A4-S1-L4_b5")
+      if (showRow && aisleValue) {
+        const location = (row.dataset.warehouseLocation || '').toUpperCase();
+        showRow = location.startsWith(aisleValue + '-') || location === aisleValue;
       }
 
       // Search filter - matches ALL words in any order
