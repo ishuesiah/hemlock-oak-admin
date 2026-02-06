@@ -19,13 +19,14 @@ passport.deserializeUser((user, done) => {
   done(null, user);
 });
 
-// Google OAuth Strategy
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
-  },
-  (accessToken, refreshToken, profile, done) => {
+// Google OAuth Strategy - only configure if credentials are present
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(new GoogleStrategy({
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback'
+    },
+    (accessToken, refreshToken, profile, done) => {
     // Extract email from profile
     const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
 
@@ -49,7 +50,10 @@ passport.use(new GoogleStrategy({
 
     return done(null, user);
   }
-));
+  ));
+} else {
+  console.warn('[Auth] Google OAuth not configured - GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET required');
+}
 
 // Initialize passport middleware
 router.use(passport.initialize());
@@ -75,12 +79,15 @@ router.get('/login', (req, res) => {
 });
 
 // Initiate Google OAuth flow
-router.get('/auth/google',
+router.get('/auth/google', (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.redirect('/login?error=' + encodeURIComponent('Google OAuth not configured. Please contact admin.'));
+  }
   passport.authenticate('google', {
     scope: ['profile', 'email'],
-    prompt: 'select_account' // Always show account selector
-  })
-);
+    prompt: 'select_account'
+  })(req, res, next);
+});
 
 // Google OAuth callback
 router.get('/auth/google/callback',
